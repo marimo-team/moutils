@@ -55,9 +55,15 @@ Widget for creating a slot that can contain HTML and handle DOM events. Supports
 
 ## Development
 
-We recommend using [uv](https://github.com/astral-sh/uv) for development.
-It will automatically manage virtual environments and dependencies for you.
+We use [uv](https://github.com/astral-sh/uv) for development.
 
 ```sh
 uv run marimo notebooks/example.py
+```
+
+### Installing pre-commit
+
+```sh
+uv tool install pre-commit
+pre-commit
 ```

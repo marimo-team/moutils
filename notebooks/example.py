@@ -15,6 +15,7 @@ def _():
         DOMQuery,
         Slot,
     )
+
     return CookieManager, DOMQuery, Slot, StorageItem, URLHash, URLPath, mo
 
 
