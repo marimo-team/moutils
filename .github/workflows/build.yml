@@ -20,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -34,11 +36,13 @@ jobs:
           uv publish
 
       - name: ⎔ Setup Node.js
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: 📝 Update Changelog
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         run: npx changelogithub
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
