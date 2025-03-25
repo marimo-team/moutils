@@ -1,0 +1,23 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[project]
+dependencies = ["anywidget"]
+name = "moutils"
+readme = "README.md"
+version = "0.0.0"
+
+# For projects not using `uv`, you can install these development dependencies with:
+# `pip install -e ".[dev]"`
+# If you're using `uv` for development, feel free to remove this section.
+[project.optional-dependencies]
+dev = ["watchfiles", "marimo"]
+
+# Dependency groups (recognized by `uv`). For more details, visit:
+# https://peps.python.org/pep-0735/
+[dependency-groups]
+dev = ["watchfiles", "marimo"]
+
+[tool.marimo.runtime]
+pythonpath = ["src"]

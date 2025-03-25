@@ -1,0 +1,71 @@
+name: GitHub Pages
+
+on:
+  # Weekly
+  schedule:
+    - cron: '0 0 * * 0' # Run at midnight UTC on Sunday
+
+  # Run on pushes to main that affect notebooks or workflow
+  push:
+    branches: [main]
+    paths:
+      - 'notebooks/**'
+      - 'src/**'
+      - '.github/workflows/pages.yml'
+
+  # Allow manual trigger
+  workflow_dispatch: {}
+
+# Prevent concurrent deployments
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  UV_SYSTEM_PYTHON: 1
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  export-notebooks:
+    runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: write
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 🐍 Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📄 Export notebooks
+        run: |
+          uvx marimo export html-wasm notebooks/example.py -o _site --mode edit
+
+      - name: 📦 Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+          retention-days: 7
+
+  deploy:
+    needs: export-notebooks
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    permissions:
+      pages: write
+      id-token: write
+
+    steps:
+      - name: 🌐 Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages
