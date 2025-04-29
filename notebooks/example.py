@@ -1,6 +1,8 @@
+
+
 import marimo
 
-__generated_with = "0.11.26"
+__generated_with = "0.13.2"
 app = marimo.App(width="medium")
 
 
@@ -14,12 +16,21 @@ def _():
         CookieManager,
         DOMQuery,
         Slot,
+        CopyToClipboard,
+    )
+    return (
+        CookieManager,
+        CopyToClipboard,
+        DOMQuery,
+        Slot,
+        StorageItem,
+        URLHash,
+        URLPath,
+        mo,
     )
 
-    return CookieManager, DOMQuery, Slot, StorageItem, URLHash, URLPath, mo
 
-
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""## `URLPath`""")
     return
@@ -37,7 +48,7 @@ def _(url_path):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""## `URLHash`""")
     return
@@ -55,7 +66,7 @@ def _(url_hash):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""## StorageItem""")
     return
@@ -79,7 +90,7 @@ def _(local_state):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""## Cookies""")
     return
@@ -97,7 +108,7 @@ def _(cookies):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""## DOM Query""")
     return
@@ -115,7 +126,7 @@ def _(query):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""## Slot""")
     return
@@ -134,6 +145,28 @@ def _(Slot):
 @app.cell
 def _(slot):
     slot.value
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## Copy to Clipboard""")
+    return
+
+
+@app.cell
+def _(CopyToClipboard):
+    copy_widget = CopyToClipboard(
+        text="Hello, world!",
+        button_text="Click to copy",
+        success_text="Copied to clipboard!",
+    )
+    return (copy_widget,)
+
+
+@app.cell
+def _(copy_widget):
+    copy_widget.success
     return
 
 

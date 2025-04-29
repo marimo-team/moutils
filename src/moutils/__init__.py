@@ -290,3 +290,17 @@ class Slot(anywidget.AnyWidget):
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)
         return headless(instance, *args, **kwargs)
+
+
+class CopyToClipboard(anywidget.AnyWidget):
+    """Widget for copying text to clipboard."""
+
+    _esm = Path(__file__).parent / "static" / "copy.js"
+    text = traitlets.Unicode("").tag(sync=True)
+    success = traitlets.Bool(False).tag(sync=True)
+    button_text = traitlets.Unicode("").tag(sync=True)
+    success_text = traitlets.Unicode("").tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)

@@ -53,6 +53,10 @@ Widget for creating a slot that can contain HTML and handle DOM events. Supports
 - Clipboard events
 - Animation and transition events
 
+### CopyToClipboard
+
+Widget for copying text to clipboard. Provides a button to copy text and shows success feedback.
+
 ## Development
 
 We use [uv](https://github.com/astral-sh/uv) for development.
