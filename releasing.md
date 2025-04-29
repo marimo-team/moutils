@@ -5,7 +5,7 @@ This document outlines the process for creating a new release of moutils.
 ## Creating a Release
 
 ```sh
-./scripts release
+./scripts/release.sh
 ```
 
 ## Version Numbering
