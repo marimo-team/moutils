@@ -6,7 +6,6 @@ app = marimo.App(width="medium")
 
 @app.cell
 def _():
-    import marimo as mo
     return
 
 
@@ -19,7 +18,6 @@ def _():
         client_id="Iv23lizZAx1IpMzYpu7C",
         debug=True,
     )
-
 
     df
     return (df,)
