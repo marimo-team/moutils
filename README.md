@@ -71,3 +71,9 @@ uv run marimo notebooks/example.py
 uv tool install pre-commit
 pre-commit
 ```
+
+### Testing
+
+```sh
+uvx --with anywidget pytest tests
+```

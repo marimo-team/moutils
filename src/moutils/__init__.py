@@ -16,6 +16,17 @@ try:
 except importlib.metadata.PackageNotFoundError:
     __version__ = "unknown"
 
+# Define the public API
+__all__ = [
+    "URLHash",
+    "URLPath",
+    "DOMQuery",
+    "CookieManager",
+    "StorageItem",
+    "Slot",
+    "CopyToClipboard",
+]
+
 
 def headless(instance: Any, *args: Any, **kwargs: Any) -> Any:
     """Wrap a widget instance to work in both headless and UI modes.

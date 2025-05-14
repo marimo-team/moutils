@@ -21,3 +21,6 @@ dev = ["marimo"]
 
 [tool.marimo.runtime]
 pythonpath = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
