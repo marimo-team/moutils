@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional
 
 import anywidget
 import traitlets
+from .oauth import DeviceFlow, PKCEFlow
 
 try:
     __version__ = importlib.metadata.version("moutils")
@@ -25,6 +26,8 @@ __all__ = [
     "StorageItem",
     "Slot",
     "CopyToClipboard",
+    "DeviceFlow",
+    "PKCEFlow",
 ]
 
 
