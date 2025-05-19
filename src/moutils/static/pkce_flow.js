@@ -31,10 +31,10 @@ const debug = localStorage.getItem('moutils-debug') === 'true';
  * @param {any} model
  */
 function setRedirectUri(model) {
-    const redirectUri = window.top.location.origin + "/oauth/callback";
-    if (debug) console.log('[moutils:pkce_flow] Setting redirect URI:', redirectUri);
-    model.set('redirect_uri', redirectUri);
-    model.save_changes();
+  const redirectUri = window.top.location.origin + '/oauth/callback';
+  if (debug) console.log('[moutils:pkce_flow] Setting redirect URI:', redirectUri);
+  model.set('redirect_uri', redirectUri);
+  model.save_changes();
 }
 
 /**
@@ -76,7 +76,7 @@ function setHtmlContent(element, html) {
  */
 function render({ model, el }) {
   // Set the redirect URI based on the current origin
-  setRedirectUri(model);
+  // setRedirectUri(model);
 
   // Initialize UI elements
   el.innerHTML = createPKCEFlowHTML(
@@ -127,7 +127,9 @@ function render({ model, el }) {
       if (startAuthBtn) {
         setHtmlContent(
           startAuthBtn,
-          `<span class="btn-text">Sign in with ${model.get('provider_name')}</span> ${model.get('icon') ? `<i class="${model.get('icon')}"></i>` : ''}`
+          `<span class="btn-text">Sign in with ${model.get('provider_name')}</span> ${
+            model.get('icon') ? `<i class="${model.get('icon')}"></i>` : ''
+          }`
         );
         startAuthBtn.disabled = false;
       }
@@ -251,4 +253,4 @@ function createPKCEFlowHTML(provider, providerName, clientId, icon) {
   `;
 }
 
-export default { render, initialize }; 
+export default { render, initialize };
