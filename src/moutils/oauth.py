@@ -16,6 +16,7 @@ import hashlib
 import secrets
 import webbrowser
 from urllib.parse import parse_qs, urlparse
+import marimo as mo
 
 
 class OAuthResponseDict(TypedDict, total=False):
@@ -41,25 +42,23 @@ class OAuthResponseDict(TypedDict, total=False):
 DEFAULTS_FOR_PROVIDER = {
     "cloudflare": {
         "provider_name": "Cloudflare",
-        "icon": "fab fa-cloudflare",
-        "verification_uri": "https://dash.cloudflare.com/oauth/device",
-        "device_code_url": "https://dash.cloudflare.com/oauth/device/code",
+        "client_id": "ec85d9cd-ff12-4d96-a376-432dbcf0bbfc",
         "token_url": "https://dash.cloudflare.com/oauth/token",
-        "authorization_url": "https://dash.cloudflare.com/oauth/authorize",
-        "scopes": "account:read zone:read",
+        "authorization_url": "https://dash.cloudflare.com/oauth2/auth",
+        "scopes": (
+            "account:read user:read secrets_store:read rag:read aiaudit:read pipelines:read aig:read ai:read pages:read lb:read dns_records:read zone:read workers_tail:read access:read logpush:read teams:read sso-connector:read"
+        ),
     },
     "github": {
         "provider_name": "GitHub",
-        "icon": "fab fa-github",
+        "client_id": "Iv23lizZAx1IpMzYpu7C",
         "verification_uri": "https://github.com/login/device",
         "device_code_url": "https://github.com/login/device/code",
-        "token_url": "https://github.com/login/oauth/access_token",
-        "authorization_url": "https://github.com/login/oauth/authorize",
         "scopes": "repo user",
     },
     "google": {
         "provider_name": "Google",
-        "icon": "fab fa-google",
+        "client_id": "",
         "verification_uri": "https://google.com/device",
         "device_code_url": "https://oauth2.googleapis.com/device/code",
         "token_url": "https://oauth2.googleapis.com/token",
@@ -68,14 +67,13 @@ DEFAULTS_FOR_PROVIDER = {
     },
     "microsoft": {
         "provider_name": "Microsoft",
-        "icon": "fab fa-microsoft",
+        "client_id": "",
         "verification_uri": "https://microsoft.com/devicelogin",
         "device_code_url": "https://login.microsoftonline.com/common/oauth2/v2.0/devicecode",
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "authorization_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
         "scopes": "user.read",
     },
-    
 }
 
 
@@ -612,7 +610,6 @@ class PKCEFlow(anywidget.AnyWidget):
     provider = traitlets.Unicode().tag(sync=True)
     provider_name = traitlets.Unicode().tag(sync=True)
     client_id = traitlets.Unicode().tag(sync=True)
-    icon = traitlets.Unicode().tag(sync=True)
     authorization_url = traitlets.Unicode().tag(sync=True)
     token_url = traitlets.Unicode().tag(sync=True)
     redirect_uri = traitlets.Unicode().tag(sync=True)
@@ -632,7 +629,9 @@ class PKCEFlow(anywidget.AnyWidget):
     authorized_scopes = traitlets.List(traitlets.Unicode(), []).tag(sync=True)
 
     # UI state
-    status = traitlets.Unicode("not_started").tag(sync=True)  # not_started, initiating, pending, success, error
+    status = traitlets.Unicode("not_started").tag(
+        sync=True
+    )  # not_started, initiating, pending, success, error
     error_message = traitlets.Unicode("").tag(sync=True)
 
     # Commands from frontend
@@ -649,7 +648,6 @@ class PKCEFlow(anywidget.AnyWidget):
         provider: str,
         client_id: str,
         provider_name: Optional[str] = None,
-        icon: Optional[str] = None,
         authorization_url: Optional[str] = None,
         token_url: Optional[str] = None,
         redirect_uri: Optional[str] = None,
@@ -664,13 +662,13 @@ class PKCEFlow(anywidget.AnyWidget):
             provider: OAuth provider identifier (e.g., "github", "microsoft")
             client_id: OAuth client ID
             provider_name: Display name for the provider (defaults to capitalized provider)
-            icon: Font Awesome icon class (e.g., "fab fa-github")
             authorization_url: URL to start the authorization flow
             token_url: URL to exchange code for token
             redirect_uri: URL where the provider will redirect after authorization
             scopes: Space-separated list of OAuth scopes to request
             on_success: Callback function when authentication succeeds
             on_error: Callback function when authentication fails
+            debug: Whether to show debug information
         """
         # Set default provider_name if not provided
         if provider_name is None:
@@ -680,16 +678,11 @@ class PKCEFlow(anywidget.AnyWidget):
             provider,
             {
                 "provider_name": provider.capitalize(),
-                "icon": "fas fa-key",
                 "authorization_url": "",
                 "token_url": "",
                 "scopes": "",
             },
         )
-
-        # Set default icon based on provider if not specified
-        if not icon:
-            icon = default_options.get("icon", "fas fa-key")
 
         # Set OAuth endpoint URLs
         if not authorization_url:
@@ -707,16 +700,34 @@ class PKCEFlow(anywidget.AnyWidget):
             scopes = default_options.get("scopes", "")
 
         # Set default redirect URI if not provided
-        # The frontend will update this with the actual origin
         if not redirect_uri:
             redirect_uri = "http://localhost:2718/oauth/callback"
 
         # Store callbacks
         self.on_success = on_success
         self.on_error = on_error
-
         self.debug = debug
-        self._log("Initializing PKCEFlow widget")
+
+        # Generate initial PKCE values
+        self.code_verifier = self._generate_code_verifier()
+        self.code_challenge = self._generate_code_challenge(self.code_verifier)
+        self.state = self._generate_state()
+
+        # Build initial authorization URL
+        params = [
+            ("response_type", "code"),
+            ("client_id", client_id),
+            ("redirect_uri", redirect_uri),
+            ("scope", scopes),
+            ("state", self.state),
+            ("code_challenge", self.code_challenge),
+            ("code_challenge_method", "S256"),
+        ]
+        query_string = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
+        full_auth_url = f"{authorization_url}?{query_string}"
+
+        if self.debug:
+            self._log(f"Initial authorization URL: {full_auth_url}")
 
         # Register event handlers
         self.observe(self._handle_token_change, names=["access_token"])
@@ -729,8 +740,7 @@ class PKCEFlow(anywidget.AnyWidget):
             provider=provider,
             provider_name=provider_name,
             client_id=client_id,
-            icon=icon,
-            authorization_url=authorization_url,
+            authorization_url=full_auth_url,  # Use the full URL with parameters
             token_url=token_url,
             redirect_uri=redirect_uri,
             scopes=scopes,
@@ -740,6 +750,90 @@ class PKCEFlow(anywidget.AnyWidget):
         """Log a message."""
         if self.debug:
             print(f"[moutils:oauth] {message}")
+
+    def _generate_code_verifier(self) -> str:
+        """Generate a code verifier for PKCE."""
+        # Using the same length as the JavaScript implementation
+        code_verifier = secrets.token_urlsafe(96)
+        return code_verifier
+
+    def _generate_code_challenge(self, code_verifier: str) -> str:
+        """Generate a code challenge from a code verifier."""
+        sha256_hash = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+        code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8").rstrip("=")
+        return code_challenge
+
+    def _generate_state(self) -> str:
+        """Generate a state parameter in the same format as the working example."""
+        # The working example uses a format like "DAHgLyt-u9ApeL-dRrwEGzHvlPhD4.oP"
+        # It appears to be base64url encoded with a dot in the middle
+        first_part = secrets.token_urlsafe(16)
+        second_part = secrets.token_urlsafe(8)
+        return f"{first_part}.{second_part}"
+
+    def start_pkce_flow(self) -> None:
+        """Start the PKCE flow authentication process."""
+        # Reset state
+        self.reset()
+
+        # Update status to show we're starting
+        self.status = "initiating"
+        self._log("Starting PKCE flow authentication")
+
+        try:
+            # Generate new PKCE values
+            self.code_verifier = self._generate_code_verifier()
+            self.code_challenge = self._generate_code_challenge(self.code_verifier)
+            self.state = self._generate_state()
+
+            # Parameters in exact order as the working example
+            params = [
+                ("response_type", "code"),
+                ("client_id", self.client_id),
+                ("redirect_uri", self.redirect_uri),
+                ("scope", self.scopes),
+                ("state", self.state),
+                ("code_challenge", self.code_challenge),
+                ("code_challenge_method", "S256"),
+            ]
+
+            # Build URL with parameters in exact order
+            base_url = self.authorization_url.split("?")[0]  # Get base URL without parameters
+            query_string = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
+            auth_url = f"{base_url}?{query_string}"
+            
+            if self.debug:
+                debug_info = f"""
+                Base URL: {base_url}
+                Query String: {query_string}
+                Full Authorization URL: {auth_url}
+                
+                Generated HTML button code:
+                <pre>
+                <button 
+                    onclick="window.open('{auth_url.replace("'", "\\'")}', '_blank')"
+                    style="background-color: #f38020; color: black; border: none; padding: 10px 20px; font-size: 16px; cursor: pointer; border-radius: 4px;"
+                >
+                    Login <i class="fa-brands fa-cloudflare"></i>
+                </button>
+                </pre>
+                """
+                self._log(debug_info)
+
+            # Update the authorization URL in the model
+            self.authorization_url = auth_url
+
+            # Open browser for authorization
+            webbrowser.open(auth_url)
+
+            # Update status to pending
+            self.status = "pending"
+            self._log("Status updated to pending, waiting for user authentication")
+
+        except Exception as e:
+            self._log(f"Exception during PKCE flow start: {str(e)}")
+            self.error_message = f"Error starting PKCE flow: {str(e)}"
+            self.status = "error"
 
     def _handle_token_change(self, change: Dict[str, Any]) -> None:
         """Handle changes to the access_token property."""
@@ -794,58 +888,6 @@ class PKCEFlow(anywidget.AnyWidget):
         self.authorized_scopes = []
         self.status = "not_started"
         self.error_message = ""
-
-    def _generate_code_verifier(self) -> str:
-        """Generate a code verifier for PKCE."""
-        code_verifier = secrets.token_urlsafe(32)
-        return code_verifier
-
-    def _generate_code_challenge(self, code_verifier: str) -> str:
-        """Generate a code challenge from a code verifier."""
-        sha256_hash = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-        code_challenge = base64.urlsafe_b64encode(sha256_hash).decode("utf-8").rstrip("=")
-        return code_challenge
-
-    def start_pkce_flow(self) -> None:
-        """Start the PKCE flow authentication process."""
-        # Reset state
-        self.reset()
-
-        # Update status to show we're starting
-        self.status = "initiating"
-        self._log("Starting PKCE flow authentication")
-
-        try:
-            # Generate PKCE values
-            self.code_verifier = self._generate_code_verifier()
-            self.code_challenge = self._generate_code_challenge(self.code_verifier)
-            self.state = secrets.token_urlsafe(16)
-
-            # Construct authorization URL
-            auth_params = {
-                "client_id": self.client_id,
-                "redirect_uri": self.redirect_uri,
-                "response_type": "code",
-                "scope": self.scopes,
-                "state": self.state,
-                "code_challenge": self.code_challenge,
-                "code_challenge_method": "S256",
-            }
-
-            auth_url = f"{self.authorization_url}?{urllib.parse.urlencode(auth_params)}"
-            self._log(f"Authorization URL: {auth_url}")
-
-            # Open browser for authorization
-            webbrowser.open(auth_url)
-
-            # Update status to pending
-            self.status = "pending"
-            self._log("Status updated to pending, waiting for user authentication")
-
-        except Exception as e:
-            self._log(f"Exception during PKCE flow start: {str(e)}")
-            self.error_message = f"Error starting PKCE flow: {str(e)}"
-            self.status = "error"
 
     def _process_callback(self, callback_url: str) -> None:
         """Process the callback URL from the OAuth provider."""
@@ -921,16 +963,16 @@ class PKCEFlow(anywidget.AnyWidget):
             self.error_message = f"Error processing callback: {str(e)}"
             self.status = "error"
 
-    def _exchange_code_for_token(self) -> OAuthResponseDict:
-        """Exchange the authorization code for an access token."""
+    def _exchange_code_for_token(self) -> Dict[str, Any]:
+        """Exchange the authorization code for tokens."""
         try:
             # Prepare request data
             data = {
-                "client_id": self.client_id,
-                "code": self.authorization_code,
-                "code_verifier": self.code_verifier,
-                "redirect_uri": self.redirect_uri,
                 "grant_type": "authorization_code",
+                "code": self.authorization_code,
+                "redirect_uri": self.redirect_uri,
+                "client_id": self.client_id,
+                "code_verifier": self.code_verifier,
             }
 
             self._log(f"Exchanging code for token at {self.token_url}")
@@ -960,7 +1002,7 @@ class PKCEFlow(anywidget.AnyWidget):
                 else:
                     # Parse URL-encoded response
                     self._log("Parsing URL-encoded token response")
-                    parsed_data: OAuthResponseDict = {}
+                    parsed_data: Dict[str, Any] = {}
                     for pair in response_data.split("&"):
                         if "=" in pair:
                             key, value = pair.split("=", 1)

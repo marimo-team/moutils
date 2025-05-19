@@ -1,65 +1,74 @@
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
+
 /* PKCE Flow Widget Styles */
 
 .pkce-flow {
-  display: block;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  max-width: 600px;
+  max-width: 400px;
   margin: 0 auto;
+  padding: 20px;
 }
 
-.pkce-flow .container {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 20px;
+.pkce-flow .section {
   text-align: center;
 }
 
-.pkce-flow .icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  color: #666;
+.pkce-flow .container {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .pkce-flow .title {
   font-size: 24px;
   font-weight: 600;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   color: #333;
 }
 
 .pkce-flow .description {
-  font-size: 16px;
+  font-size: 14px;
   color: #666;
   margin-bottom: 24px;
   line-height: 1.5;
 }
 
 .pkce-flow .button {
-  background: #007bff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f38020;
   color: white;
   border: none;
-  border-radius: 4px;
   padding: 12px 24px;
   font-size: 16px;
   font-weight: 500;
+  border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s;
+  width: 100%;
+  max-width: 300px;
 }
 
 .pkce-flow .button:hover {
-  background: #0056b3;
+  background-color: #e67300;
 }
 
 .pkce-flow .button:disabled {
-  background: #ccc;
+  background-color: #ccc;
   cursor: not-allowed;
 }
 
-.pkce-flow .status {
-  margin-top: 16px;
-  font-size: 14px;
-  color: #666;
+.pkce-flow .spinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 8px;
 }
 
 .pkce-flow .error {
@@ -68,22 +77,16 @@
   font-size: 14px;
 }
 
+.pkce-flow .status {
+  margin-top: 16px;
+  font-size: 14px;
+  color: #666;
+}
+
 .pkce-flow .success {
   color: #28a745;
   margin-top: 16px;
   font-size: 14px;
-}
-
-.pkce-flow .loading {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 3px solid rgba(0, 0, 0, 0.1);
-  border-radius: 50%;
-  border-top-color: #007bff;
-  animation: spin 1s ease-in-out infinite;
-  margin-right: 8px;
-  vertical-align: middle;
 }
 
 @keyframes spin {
@@ -104,10 +107,6 @@
   }
 
   .pkce-flow .description {
-    color: #ccc;
-  }
-
-  .pkce-flow .icon {
     color: #ccc;
   }
 

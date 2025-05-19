@@ -31,10 +31,10 @@ const debug = localStorage.getItem('moutils-debug') === 'true';
  * @param {any} model
  */
 function setRedirectUri(model) {
-    const redirectUri = window.top.location.origin + "/oauth/callback";
-    if (debug) console.log('[moutils:pkce_flow] Setting redirect URI:', redirectUri);
-    model.set('redirect_uri', redirectUri);
-    model.save_changes();
+  const redirectUri = window.top.location.origin + '/oauth/callback';
+  if (debug) console.log('[moutils:pkce_flow] Setting redirect URI:', redirectUri);
+  model.set('redirect_uri', redirectUri);
+  model.save_changes();
 }
 
 /**
@@ -76,7 +76,7 @@ function setHtmlContent(element, html) {
  */
 function render({ model, el }) {
   // Set the redirect URI based on the current origin
-  setRedirectUri(model);
+  // setRedirectUri(model);
 
   // Initialize UI elements
   el.innerHTML = createPKCEFlowHTML(
@@ -127,7 +127,7 @@ function render({ model, el }) {
       if (startAuthBtn) {
         setHtmlContent(
           startAuthBtn,
-          `<span class="btn-text">Sign in with ${model.get('provider_name')}</span> ${model.get('icon') ? `<i class="${model.get('icon')}"></i>` : ''}`
+          `<span class="btn-text">Sign in with ${model.get('provider_name')}</span>`
         );
         startAuthBtn.disabled = false;
       }
@@ -162,6 +162,7 @@ function render({ model, el }) {
 
     // Get the authorization URL from the model
     const authUrl = model.get('authorization_url');
+    
     if (authUrl) {
       if (debug) console.log('[moutils:pkce_flow] Opening authorization URL:', authUrl);
       window.open(authUrl, '_blank');
@@ -203,16 +204,11 @@ function createPKCEFlowHTML(provider, providerName, clientId, icon) {
     <div class="pkce-flow">
       <div id="initialSection" class="section">
         <div class="container">
-          <div class="icon">
-            <i class="${icon}"></i>
-          </div>
-          <div class="title">Sign in with ${providerName}</div>
           <div class="description">
-            Click the button below to sign in with ${providerName}. You will be redirected to ${providerName}'s login page.
+            You will be redirected to ${providerName}'s login page.
           </div>
           <button class="button" id="startAuthBtn">
             <span class="btn-text">Sign in with ${providerName}</span>
-            ${icon ? `<i class="${icon}"></i>` : ''}
           </button>
           <div id="statusMessage"></div>
         </div>
@@ -220,12 +216,9 @@ function createPKCEFlowHTML(provider, providerName, clientId, icon) {
 
       <div id="pendingSection" class="section" style="display: none;">
         <div class="container">
-          <div class="icon">
-            <i class="${icon}"></i>
-          </div>
           <div class="title">Waiting for Authorization</div>
           <div class="description">
-            Please complete the sign-in process in your browser. You will be redirected back here automatically.
+            Please complete the sign-in process in your browser.
           </div>
           <div class="spinner"></div>
           <div id="statusMessage"></div>
@@ -234,16 +227,12 @@ function createPKCEFlowHTML(provider, providerName, clientId, icon) {
 
       <div id="tokenSection" class="section" style="display: none;">
         <div class="container">
-          <div class="icon">
-            <i class="${icon}"></i>
-          </div>
           <div class="title">Successfully Signed In</div>
           <div class="description">
             You have successfully signed in with ${providerName}.
           </div>
           <button class="button" id="startNewAuthBtn">
             <span class="btn-text">Sign in with a different account</span>
-            ${icon ? `<i class="${icon}"></i>` : ''}
           </button>
         </div>
       </div>
@@ -251,4 +240,4 @@ function createPKCEFlowHTML(provider, providerName, clientId, icon) {
   `;
 }
 
-export default { render, initialize }; 
+export default { render, initialize };
