@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.13.2"
+__generated_with = "0.13.15"
 app = marimo.App(width="medium")
 
 
@@ -14,6 +14,7 @@ def _():
         CookieManager,
         DOMQuery,
         Slot,
+        URLInfo,
         CopyToClipboard,
         shell,
     )
@@ -25,6 +26,7 @@ def _():
         Slot,
         StorageItem,
         URLHash,
+        URLInfo,
         URLPath,
         mo,
         shell,
@@ -64,6 +66,28 @@ def _(URLHash):
 @app.cell
 def _(url_hash):
     url_hash.hash
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## `URLInfo`""")
+    return
+
+
+@app.cell
+def _(URLInfo):
+    url_info = URLInfo()
+    url_info
+    return (url_info,)
+
+
+@app.cell
+def _(url_info):
+    [
+        url_info.hostname,
+        url_info.port,
+    ]
     return
 
 
@@ -181,7 +205,7 @@ def _(mo):
 def _(shell):
     shell_widget = shell("echo 'Hello from ShellWidget!'")
     shell_widget
-    return (shell_widget,)
+    return
 
 
 if __name__ == "__main__":
