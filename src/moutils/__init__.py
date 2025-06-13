@@ -13,6 +13,7 @@ import sys
 import anywidget
 import traitlets
 from .oauth import DeviceFlow, PKCEFlow
+from .url_info import URLInfo
 
 try:
     __version__ = importlib.metadata.version("moutils")

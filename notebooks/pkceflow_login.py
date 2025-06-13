@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.13.10"
+__generated_with = "0.11.26"
 app = marimo.App(width="medium")
 
 
@@ -16,15 +16,12 @@ def _():
     )
 
     df
-    return (df,)
+    return PKCEFlow, df
 
 
 @app.cell
-def _(df, mo):
-    # Display the access token when authentication is successful
-    if df.access_token:
-        mo.md("## Access Token")
-        mo.md(f"```\n{df.access_token}\n```")
+def _(df):
+    print(f"df.access_token: {df.access_token}")
     return
 
 

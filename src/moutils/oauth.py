@@ -17,7 +17,7 @@ import secrets
 import webbrowser
 from urllib.parse import parse_qs, urlparse
 import marimo as mo
-
+from .url_info import URLInfo
 
 class OAuthResponseDict(TypedDict, total=False):
     """Type for OAuth response dictionaries."""
@@ -43,7 +43,7 @@ DEFAULTS_FOR_PROVIDER = {
     "cloudflare": {
         "provider_name": "Cloudflare",
         "client_id": "ec85d9cd-ff12-4d96-a376-432dbcf0bbfc",
-        "token_url": "https://dash.cloudflare.com/oauth/token",
+        "token_url": "https://dash.cloudflare.com/oauth2/token",
         "authorization_url": "https://dash.cloudflare.com/oauth2/auth",
         "scopes": (
             "account:read user:read secrets_store:read rag:read aiaudit:read pipelines:read aig:read ai:read pages:read lb:read dns_records:read zone:read workers_tail:read access:read logpush:read teams:read sso-connector:read"
@@ -250,14 +250,15 @@ class DeviceFlow(anywidget.AnyWidget):
                 "provider": self.provider,
             }
 
-            # Add refresh_token_expires_in if available
-            if (
-                hasattr(self, "refresh_token_expires_in")
-                and self.refresh_token_expires_in
-            ):
+            if self.refresh_token_expires_in:
                 token_data["refresh_token_expires_in"] = self.refresh_token_expires_in
 
+            # Call success callback
             self.on_success(token_data)
+            
+            # Ensure we don't trigger another auth flow
+            self.start_auth = False
+            self.save_changes()
 
     def _handle_error_change(self, change: Dict[str, Any]) -> None:
         """Handle changes to the error_message property."""
@@ -269,11 +270,15 @@ class DeviceFlow(anywidget.AnyWidget):
         """Handle start_auth being set to True by the frontend."""
         if change["new"]:
             self._log("Start auth triggered from frontend")
-            # Reset to prevent repeated triggering
-            self.start_auth = False
-
-            # Start the authentication flow
-            self.start_device_flow()
+            # Only start if we're not already in a success state
+            if self.status != "success":
+                # Reset to prevent repeated triggering
+                self.start_auth = False
+                # Start the authentication flow
+                self.start_device_flow()
+            else:
+                # If we're already in success state, just reset the flag
+                self.start_auth = False
 
     def _handle_check_token(self, change: Dict[str, Any]) -> None:
         """Handle check_token being incremented by the frontend."""
@@ -303,6 +308,7 @@ class DeviceFlow(anywidget.AnyWidget):
         self.status = "not_started"
         self.error_message = ""
         self._expires_at = 0
+        self.logout = False  # Reset logout flag
 
     def start_device_flow(self) -> None:
         """Start the device flow authentication process."""
@@ -580,6 +586,46 @@ class DeviceFlow(anywidget.AnyWidget):
             self._log(f"Exception in token request: {str(e)}")
             return {"error": "request_error", "error_description": str(e)}
 
+    def logout(self) -> None:
+        """Handle OAuth logout."""
+        self._log("Logging out")
+        try:
+            # Revoke the access token
+            if self.access_token:
+                self._log("Revoking access token")
+                revoke_url = "https://dash.cloudflare.com/oauth2/revoke"
+                data = {
+                    "client_id": self.client_id,
+                    "token": self.access_token,
+                    "token_type_hint": "access_token"
+                }
+                encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+                
+                req = urllib.request.Request(
+                    revoke_url,
+                    data=encoded_data,
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    method="POST"
+                )
+                
+                try:
+                    with urllib.request.urlopen(req) as response:
+                        self._log("Token revoked successfully")
+                except urllib.error.HTTPError as e:
+                    self._log(f"HTTP error in token revocation: {e.code} {e.reason}")
+                except Exception as e:
+                    self._log(f"Error revoking token: {str(e)}")
+        except Exception as e:
+            self._log(f"Error during logout: {str(e)}")
+        finally:
+            # Reset all authentication state
+            self.reset()
+            # Update status to not_started
+            self.status = "not_started"
+            self._log("Logout complete")
+
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)
         try:
@@ -614,6 +660,7 @@ class PKCEFlow(anywidget.AnyWidget):
     token_url = traitlets.Unicode().tag(sync=True)
     redirect_uri = traitlets.Unicode().tag(sync=True)
     scopes = traitlets.Unicode().tag(sync=True)
+    hostname = traitlets.Unicode("").tag(sync=True)
 
     # PKCE state
     code_verifier = traitlets.Unicode("").tag(sync=True)
@@ -637,6 +684,7 @@ class PKCEFlow(anywidget.AnyWidget):
     # Commands from frontend
     start_auth = traitlets.Bool(False).tag(sync=True)
     handle_callback = traitlets.Unicode("").tag(sync=True)
+    logout = traitlets.Bool(False).tag(sync=True)
 
     # Events
     on_success = None
@@ -652,6 +700,7 @@ class PKCEFlow(anywidget.AnyWidget):
         token_url: Optional[str] = None,
         redirect_uri: Optional[str] = None,
         scopes: Optional[str] = None,
+        additional_state: Optional[Callable[[], Dict[str, Any]]] = None,
         on_success: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
         debug: Optional[bool] = False,
@@ -707,40 +756,21 @@ class PKCEFlow(anywidget.AnyWidget):
         self.on_success = on_success
         self.on_error = on_error
         self.debug = debug
-
-        # Generate initial PKCE values
-        self.code_verifier = self._generate_code_verifier()
-        self.code_challenge = self._generate_code_challenge(self.code_verifier)
-        self.state = self._generate_state()
-
-        # Build initial authorization URL
-        params = [
-            ("response_type", "code"),
-            ("client_id", client_id),
-            ("redirect_uri", redirect_uri),
-            ("scope", scopes),
-            ("state", self.state),
-            ("code_challenge", self.code_challenge),
-            ("code_challenge_method", "S256"),
-        ]
-        query_string = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
-        full_auth_url = f"{authorization_url}?{query_string}"
-
-        if self.debug:
-            self._log(f"Initial authorization URL: {full_auth_url}")
+        self.additional_state = additional_state
 
         # Register event handlers
         self.observe(self._handle_token_change, names=["access_token"])
         self.observe(self._handle_error_change, names=["error_message"])
         self.observe(self._handle_start_auth, names=["start_auth"])
         self.observe(self._handle_callback, names=["handle_callback"])
+        self.observe(self._handle_logout, names=["logout"])
 
         # Initialize widget with properties
         super().__init__(
             provider=provider,
             provider_name=provider_name,
             client_id=client_id,
-            authorization_url=full_auth_url,  # Use the full URL with parameters
+            authorization_url=authorization_url,  # Use the base URL without parameters
             token_url=token_url,
             redirect_uri=redirect_uri,
             scopes=scopes,
@@ -764,12 +794,44 @@ class PKCEFlow(anywidget.AnyWidget):
         return code_challenge
 
     def _generate_state(self) -> str:
-        """Generate a state parameter in the same format as the working example."""
-        # The working example uses a format like "DAHgLyt-u9ApeL-dRrwEGzHvlPhD4.oP"
-        # It appears to be base64url encoded with a dot in the middle
-        first_part = secrets.token_urlsafe(16)
-        second_part = secrets.token_urlsafe(8)
-        return f"{first_part}.{second_part}"
+        """Generate a state parameter appended to any additional state provided."""
+        # Get hostname from traitlet
+        hostname = self.hostname
+        sandbox_id = ""
+        
+        if self.debug:
+            self._log(f"Generating state with hostname: {hostname}")
+        
+        # Handle localhost case
+        if hostname == "localhost":
+            sandbox_id = "localhost:2718"
+            if self.debug:
+                self._log(f"Detected localhost, setting sandbox_id to: {sandbox_id}")
+        # Handle sandbox.marimo.app format
+        elif ".sandbox.marimo.app" in hostname:
+            # Extract the random string before .sandbox.marimo.app
+            parts = hostname.split(".sandbox.marimo.app")
+            if parts and parts[0]:
+                sandbox_id = parts[0]
+                if self.debug:
+                    self._log(f"Detected sandbox.marimo.app, extracted sandbox_id: {sandbox_id}")
+        
+        state = {
+            "sandbox_id": sandbox_id,
+            "nonce": f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}"
+        }
+        if self.additional_state is not None:
+            state.update(self.additional_state())
+        
+        if self.debug:
+            self._log(f"Final state object: {state}")
+            
+        # Encode state to base64
+        encoded_state = base64.urlsafe_b64encode(json.dumps(state).encode()).decode().rstrip("=")
+        if self.debug:
+            self._log(f"Encoded state: {encoded_state}")
+            
+        return encoded_state
 
     def start_pkce_flow(self) -> None:
         """Start the PKCE flow authentication process."""
@@ -781,10 +843,20 @@ class PKCEFlow(anywidget.AnyWidget):
         self._log("Starting PKCE flow authentication")
 
         try:
+            # Check if hostname is set
+            if not self.hostname:
+                self._log("Hostname not set, waiting for JavaScript initialization")
+                self.error_message = "Hostname not set, please try again"
+                self.status = "error"
+                return
+
             # Generate new PKCE values
             self.code_verifier = self._generate_code_verifier()
             self.code_challenge = self._generate_code_challenge(self.code_verifier)
             self.state = self._generate_state()
+
+            if self.debug:
+                self._log(f"Generated state: {self.state}")
 
             # Parameters in exact order as the working example
             params = [
@@ -801,7 +873,6 @@ class PKCEFlow(anywidget.AnyWidget):
             base_url = self.authorization_url.split("?")[0]  # Get base URL without parameters
             query_string = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
             auth_url = f"{base_url}?{query_string}"
-            
             if self.debug:
                 debug_info = f"""
                 Base URL: {base_url}
@@ -822,9 +893,6 @@ class PKCEFlow(anywidget.AnyWidget):
 
             # Update the authorization URL in the model
             self.authorization_url = auth_url
-
-            # Open browser for authorization
-            webbrowser.open(auth_url)
 
             # Update status to pending
             self.status = "pending"
@@ -850,7 +918,12 @@ class PKCEFlow(anywidget.AnyWidget):
             if self.refresh_token_expires_in:
                 token_data["refresh_token_expires_in"] = self.refresh_token_expires_in
 
+            # Call success callback
             self.on_success(token_data)
+            
+            # Ensure we don't trigger another auth flow
+            self.start_auth = False
+            self.save_changes()
 
     def _handle_error_change(self, change: Dict[str, Any]) -> None:
         """Handle changes to the error_message property."""
@@ -861,18 +934,98 @@ class PKCEFlow(anywidget.AnyWidget):
     def _handle_start_auth(self, change: Dict[str, Any]) -> None:
         """Handle start_auth being set to True by the frontend."""
         if change["new"]:
-            self._log("Start auth triggered from frontend")
-            # Reset to prevent repeated triggering
-            self.start_auth = False
-
-            # Start the authentication flow
-            self.start_pkce_flow()
+            # Only start if we're not already in a success state
+            if self.status != "success":
+                self.start_auth = False
+                self._log("Start auth triggered from frontend")
+                self.start_pkce_flow()
+            else:
+                self.start_auth = False
 
     def _handle_callback(self, change: Dict[str, Any]) -> None:
         """Handle callback URL from the frontend."""
+        print(f"Callback URL received from frontend: {change['new']}")
         if change["new"]:
             self._log("Callback URL received from frontend")
-            self._process_callback(change["new"])
+            callback_url = change["new"]
+            
+            # Parse callback URL
+            parsed_url = urlparse(callback_url)
+            query_params = parse_qs(parsed_url.query)
+            
+            # Check for errors
+            if "error" in query_params:
+                error = query_params["error"][0]
+                error_description = query_params.get("error_description", [error])[0]
+                self._log(f"Error in callback: {error} - {error_description}")
+                self.error_message = f"Error: {error_description}"
+                self.status = "error"
+                self.start_auth = False
+                return
+            
+            # Verify state
+            if "state" not in query_params:
+                self._log("No state parameter in callback")
+                self.error_message = "No state parameter received"
+                self.status = "error"
+                self.start_auth = False
+                return
+                
+            received_state = query_params["state"][0]
+            if self.debug:
+                self._log(f"Received state: {received_state}")
+            
+            # Get authorization code
+            if "code" not in query_params:
+                self._log("No authorization code in callback")
+                self.error_message = "No authorization code received"
+                self.status = "error"
+                self.start_auth = False
+                return
+            
+            self.authorization_code = query_params["code"][0]
+            self._log("Authorization code received, exchanging for token")
+            
+            # Exchange code for token
+            token_response = self._exchange_code_for_token()
+            
+            # Check for token
+            if "access_token" in token_response:
+                # Success - we have a token
+                self._log("Access token received successfully")
+                self.access_token = token_response.get("access_token", "")
+                self.token_type = token_response.get("token_type", "bearer")
+                self.refresh_token = token_response.get("refresh_token", "")
+                
+                # Store additional response data
+                self.refresh_token_expires_in = token_response.get("refresh_token_expires_in", 0)
+                
+                # Parse scopes
+                if "scope" in token_response:
+                    self.authorized_scopes = token_response["scope"].split(" ")
+                    self._log(f"Authorized scopes: {self.authorized_scopes}")
+                
+                # Update status and ensure start_auth is False
+                self.status = "success"
+                self.start_auth = False
+                self._log("Authentication successful")
+                return
+            
+            # Handle errors
+            if "error" in token_response:
+                error = token_response["error"]
+                error_description = token_response.get("error_description", error)
+                self._log(f"Token error: {error_description}")
+                self.error_message = f"Error: {error_description}"
+                self.status = "error"
+                self.start_auth = False
+
+    def _handle_logout(self, change: Dict[str, Any]) -> None:
+        """Handle logout being set to True by the frontend."""
+        if change["new"]:
+            self._log("Logout triggered from frontend")
+            self.logout = False
+            self.logout()
 
     def reset(self) -> None:
         """Reset the authentication state."""
@@ -888,80 +1041,7 @@ class PKCEFlow(anywidget.AnyWidget):
         self.authorized_scopes = []
         self.status = "not_started"
         self.error_message = ""
-
-    def _process_callback(self, callback_url: str) -> None:
-        """Process the callback URL from the OAuth provider."""
-        self._log(f"Processing callback URL: {callback_url}")
-
-        try:
-            # Parse callback URL
-            parsed_url = urlparse(callback_url)
-            query_params = parse_qs(parsed_url.query)
-
-            # Check for errors
-            if "error" in query_params:
-                error = query_params["error"][0]
-                error_description = query_params.get("error_description", [error])[0]
-                self._log(f"Error in callback: {error} - {error_description}")
-                self.error_message = f"Error: {error_description}"
-                self.status = "error"
-                return
-
-            # Verify state
-            if "state" not in query_params or query_params["state"][0] != self.state:
-                self._log("State mismatch in callback")
-                self.error_message = "Invalid state parameter in callback"
-                self.status = "error"
-                return
-
-            # Get authorization code
-            if "code" not in query_params:
-                self._log("No authorization code in callback")
-                self.error_message = "No authorization code received"
-                self.status = "error"
-                return
-
-            self.authorization_code = query_params["code"][0]
-            self._log("Authorization code received, exchanging for token")
-
-            # Exchange code for token
-            token_response = self._exchange_code_for_token()
-
-            # Check for token
-            if "access_token" in token_response:
-                # Success - we have a token
-                self._log("Access token received successfully")
-                self.access_token = token_response.get("access_token", "")
-                self.token_type = token_response.get("token_type", "bearer")
-                self.refresh_token = token_response.get("refresh_token", "")
-
-                # Store additional response data
-                self.refresh_token_expires_in = token_response.get(
-                    "refresh_token_expires_in", 0
-                )
-
-                # Parse scopes
-                if "scope" in token_response:
-                    self.authorized_scopes = token_response["scope"].split(" ")
-                    self._log(f"Authorized scopes: {self.authorized_scopes}")
-
-                # Update status
-                self.status = "success"
-                self._log("Authentication successful")
-                return
-
-            # Handle errors
-            if "error" in token_response:
-                error = token_response["error"]
-                error_description = token_response.get("error_description", error)
-                self._log(f"Token error: {error_description}")
-                self.error_message = f"Error: {error_description}"
-                self.status = "error"
-
-        except Exception as e:
-            self._log(f"Exception processing callback: {str(e)}")
-            self.error_message = f"Error processing callback: {str(e)}"
-            self.status = "error"
+        self.logout = False  # Reset logout flag
 
     def _exchange_code_for_token(self) -> Dict[str, Any]:
         """Exchange the authorization code for tokens."""
@@ -975,35 +1055,59 @@ class PKCEFlow(anywidget.AnyWidget):
                 "code_verifier": self.code_verifier,
             }
 
+            if self.debug:
+                self._log(f"Token request data: {data}")
+
             self._log(f"Exchanging code for token at {self.token_url}")
             # Encode data for request
             encoded_data = urllib.parse.urlencode(data).encode("utf-8")
 
-            # Set up request
+            # Set up request with browser-like headers
             req = urllib.request.Request(
                 self.token_url,
                 data=encoded_data,
                 headers={
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Accept": "application/json",
+                    "Accept-Encoding": "gzip, deflate",
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Origin": self.redirect_uri.split("/oauth/callback")[0],
+                    "Referer": self.authorization_url,
+                    "Connection": "keep-alive",
                 },
             )
 
             # Make request
             with urllib.request.urlopen(req) as response:
-                response_data = response.read().decode("utf-8")
+                # Get the content encoding
+                content_encoding = response.getheader('Content-Encoding', '')
+                
+                # Read the response data
+                response_data = response.read()
+                
+                # Handle gzipped response
+                if content_encoding == 'gzip':
+                    import gzip
+                    response_data = gzip.decompress(response_data)
+                elif content_encoding == 'deflate':
+                    import zlib
+                    response_data = zlib.decompress(response_data)
+                
+                # Decode the response data
+                response_text = response_data.decode('utf-8')
                 self._log("Token response received")
 
                 # Parse response
                 content_type = response.getheader("Content-Type", "")
                 if "application/json" in content_type:
                     self._log("Parsing JSON token response")
-                    return json.loads(response_data)
+                    return json.loads(response_text)
                 else:
                     # Parse URL-encoded response
                     self._log("Parsing URL-encoded token response")
                     parsed_data: Dict[str, Any] = {}
-                    for pair in response_data.split("&"):
+                    for pair in response_text.split("&"):
                         if "=" in pair:
                             key, value = pair.split("=", 1)
                             parsed_data[urllib.parse.unquote(key)] = (
@@ -1014,10 +1118,45 @@ class PKCEFlow(anywidget.AnyWidget):
         except urllib.error.HTTPError as e:
             self._log(f"HTTP error in token request: {e.code} {e.reason}")
             try:
-                error_data = json.loads(e.read().decode("utf-8"))
-                self._log(f"Error response details: {error_data}")
-                return error_data
-            except Exception:
+                # Get the content encoding
+                content_encoding = e.headers.get('Content-Encoding', '')
+                
+                # Read the error response data
+                error_data = e.read()
+                
+                # Handle gzipped error response
+                if content_encoding == 'gzip':
+                    import gzip
+                    error_data = gzip.decompress(error_data)
+                elif content_encoding == 'deflate':
+                    import zlib
+                    error_data = zlib.decompress(error_data)
+                
+                # Decode the error response
+                error_text = error_data.decode('utf-8')
+                self._log(f"Error response body: {error_text}")
+                
+                # Check if this is a Cloudflare challenge
+                if "Just a moment..." in error_text and "Cloudflare" in error_text:
+                    self._log("Detected Cloudflare challenge")
+                    return {
+                        "error": "cloudflare_challenge",
+                        "error_description": "Cloudflare security challenge detected. Please try again in a few minutes.",
+                    }
+                
+                try:
+                    error_json = json.loads(error_text)
+                    self._log(f"Error response details: {error_json}")
+                    return error_json
+                except json.JSONDecodeError:
+                    self._log("Error response is not JSON")
+                    return {
+                        "error": "http_error",
+                        "error_description": f"HTTP error {e.code}: {e.reason}",
+                        "error_details": error_text
+                    }
+            except Exception as e2:
+                self._log(f"Error reading error response: {str(e2)}")
                 return {
                     "error": "http_error",
                     "error_description": f"HTTP error {e.code}: {e.reason}",
@@ -1025,6 +1164,46 @@ class PKCEFlow(anywidget.AnyWidget):
         except Exception as e:
             self._log(f"Exception in token request: {str(e)}")
             return {"error": "request_error", "error_description": str(e)}
+
+    def logout(self) -> None:
+        """Handle OAuth logout."""
+        self._log("Logging out")
+        try:
+            # Revoke the access token
+            if self.access_token:
+                self._log("Revoking access token")
+                revoke_url = "https://dash.cloudflare.com/oauth2/revoke"
+                data = {
+                    "client_id": self.client_id,
+                    "token": self.access_token,
+                    "token_type_hint": "access_token"
+                }
+                encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+                
+                req = urllib.request.Request(
+                    revoke_url,
+                    data=encoded_data,
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    method="POST"
+                )
+                
+                try:
+                    with urllib.request.urlopen(req) as response:
+                        self._log("Token revoked successfully")
+                except urllib.error.HTTPError as e:
+                    self._log(f"HTTP error in token revocation: {e.code} {e.reason}")
+                except Exception as e:
+                    self._log(f"Error revoking token: {str(e)}")
+        except Exception as e:
+            self._log(f"Error during logout: {str(e)}")
+        finally:
+            # Reset all authentication state
+            self.reset()
+            # Update status to not_started
+            self.status = "not_started"
+            self._log("Logout complete")
 
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)

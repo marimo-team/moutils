@@ -89,6 +89,58 @@
   font-size: 14px;
 }
 
+.pkce-flow .token-info {
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 16px;
+  margin: 16px 0;
+  text-align: left;
+}
+
+.pkce-flow .token-header {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.pkce-flow .token-display {
+  font-family: monospace;
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+.pkce-flow .copy-button {
+  background-color: #4a90e2;
+  margin-top: 8px;
+}
+
+.pkce-flow .copy-button:hover {
+  background-color: #357abd;
+}
+
+.pkce-flow .button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.pkce-flow .button-group .button {
+  width: 100%;
+}
+
+.pkce-flow .logout-button {
+  background-color: #dc3545;
+}
+
+.pkce-flow .logout-button:hover {
+  background-color: #c82333;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -111,6 +163,19 @@
   }
 
   .pkce-flow .status {
+    color: #ccc;
+  }
+
+  .pkce-flow .token-info {
+    background: #2a2a2a;
+  }
+
+  .pkce-flow .token-display {
+    background: #1a1a1a;
+    border-color: #444;
+  }
+
+  .pkce-flow .token-header {
     color: #ccc;
   }
 } 
