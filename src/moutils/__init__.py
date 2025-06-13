@@ -7,6 +7,8 @@ cookies, and DOM elements in marimo notebooks.
 import importlib.metadata
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
+import asyncio
+import sys
 
 import anywidget
 import traitlets
@@ -28,6 +30,8 @@ __all__ = [
     "CopyToClipboard",
     "DeviceFlow",
     "PKCEFlow",
+    "ShellWidget",
+    "shell",
 ]
 
 
@@ -50,6 +54,16 @@ def headless(instance: Any, *args: Any, **kwargs: Any) -> Any:
         marimo.output.append(as_widget)
         return as_widget
     except ImportError:
+        return instance
+
+
+def _wrap_marimo(instance: Any, *args: Any, **kwargs: Any) -> Any:
+    try:
+        import marimo
+
+        instance.__init__(*args, **kwargs)
+        return marimo.ui.anywidget(instance)
+    except (ImportError, ModuleNotFoundError):
         return instance
 
 
@@ -306,6 +320,99 @@ class Slot(anywidget.AnyWidget):
         return headless(instance, *args, **kwargs)
 
 
+class ShellWidget(anywidget.AnyWidget):
+    """Interactive shell command widget for Jupyter notebooks."""
+
+    _esm = Path(__file__).parent / "static" / "shell.js"
+    command = traitlets.Unicode("").tag(sync=True)
+    working_directory = traitlets.Unicode(".").tag(sync=True)
+
+    def __init__(self, command: str, working_directory: str = "."):
+        super().__init__()
+        self.command = command
+        self.working_directory = working_directory
+        self.on_msg(self._handle_msg)
+
+    def _handle_msg(self, widget, content, buffers):
+        if content == "execute_command":
+            # Handle async execution properly in Jupyter
+            if hasattr(asyncio, "current_task") and asyncio.current_task():
+                # We're already in an async context
+                asyncio.create_task(self._execute_command_async())
+            else:
+                # Create new event loop if needed
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(self._execute_command_async())
+                    else:
+                        loop.run_until_complete(self._execute_command_async())
+                except RuntimeError:
+                    # Fallback for environments without event loop
+                    asyncio.run(self._execute_command_async())
+
+    async def _execute_command_async(self):
+        """Execute the shell command asynchronously and stream output."""
+        try:
+            # Determine shell based on platform
+            shell = "/bin/bash" if sys.platform != "win32" else "cmd"
+            shell_args = ["-c"] if sys.platform != "win32" else ["/c"]
+
+            # Create async subprocess
+            process = await asyncio.create_subprocess_exec(
+                shell,
+                *shell_args,
+                self.command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=self.working_directory,
+            )
+
+            # Stream output
+            while True:
+                chunk = await process.stdout.read(1024)
+                if not chunk:
+                    break
+
+                try:
+                    decoded_chunk = chunk.decode("utf-8", errors="replace")
+                except UnicodeDecodeError:
+                    decoded_chunk = chunk.decode("latin-1", errors="replace")
+
+                self.send({"type": "output", "data": decoded_chunk})
+
+            # Wait for completion
+            return_code = await process.wait()
+            self.send({"type": "completed", "returncode": return_code})
+
+        except Exception as e:
+            self.send({"type": "error", "error": str(e)})
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return _wrap_marimo(instance, *args, **kwargs)
+
+
+def shell(command: str, working_directory: str = ".") -> ShellWidget:
+    """
+    Create a shell command widget.
+
+    Args:
+        command: The shell command to execute
+        working_directory: Directory to run the command in (defaults to current directory)
+
+    Returns:
+        ShellWidget: An interactive widget with a button to run the command
+
+    Examples:
+        shell("ls -la")
+        shell("python --version")
+        shell("find . -name '*.py' | head -10")
+        shell("npm install", working_directory="./frontend")
+    """
+    return ShellWidget(command, working_directory)
+
+
 class CopyToClipboard(anywidget.AnyWidget):
     """Widget for copying text to clipboard."""
 
@@ -317,4 +424,4 @@ class CopyToClipboard(anywidget.AnyWidget):
 
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)
-        return headless(instance, *args, **kwargs)
+        return _wrap_marimo(instance, *args, **kwargs)

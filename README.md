@@ -57,6 +57,28 @@ Widget for creating a slot that can contain HTML and handle DOM events. Supports
 
 Widget for copying text to clipboard. Provides a button to copy text and shows success feedback.
 
+### ShellWidget
+
+Interactive shell command widget for running terminal commands in notebooks. Features:
+
+- Real-time output streaming
+- Cross-platform support (Windows, macOS, Linux)
+- Working directory specification
+- Asynchronous execution
+- Error handling and status reporting
+
+Use the convenience function `shell()` or the `ShellWidget` class directly:
+
+```python
+from moutils import shell
+
+# Simple command
+shell("ls -la")
+
+# With working directory
+shell("npm install", working_directory="./frontend")
+```
+
 ## Development
 
 We use [uv](https://github.com/astral-sh/uv) for development.

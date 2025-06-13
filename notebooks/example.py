@@ -1,5 +1,3 @@
-
-
 import marimo
 
 __generated_with = "0.13.2"
@@ -17,7 +15,9 @@ def _():
         DOMQuery,
         Slot,
         CopyToClipboard,
+        shell,
     )
+
     return (
         CookieManager,
         CopyToClipboard,
@@ -27,6 +27,7 @@ def _():
         URLHash,
         URLPath,
         mo,
+        shell,
     )
 
 
@@ -168,6 +169,19 @@ def _(CopyToClipboard):
 def _(copy_widget):
     copy_widget.success
     return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""## Shell""")
+    return
+
+
+@app.cell
+def _(shell):
+    shell_widget = shell("echo 'Hello from ShellWidget!'")
+    shell_widget
+    return (shell_widget,)
 
 
 if __name__ == "__main__":
