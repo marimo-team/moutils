@@ -84,7 +84,7 @@ shell("npm install", working_directory="./frontend")
 We use [uv](https://github.com/astral-sh/uv) for development.
 
 ```sh
-uv run marimo notebooks/example.py
+uv run marimo edit notebooks/example.py
 ```
 
 ### Installing pre-commit

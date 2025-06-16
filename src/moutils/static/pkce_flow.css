@@ -1,0 +1,181 @@
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
+
+/* PKCE Flow Widget Styles */
+
+.pkce-flow {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.pkce-flow .section {
+  text-align: center;
+}
+
+.pkce-flow .container {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.pkce-flow .title {
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.pkce-flow .description {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.pkce-flow .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f38020;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  width: 100%;
+  max-width: 300px;
+}
+
+.pkce-flow .button:hover {
+  background-color: #e67300;
+}
+
+.pkce-flow .button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.pkce-flow .spinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 8px;
+}
+
+.pkce-flow .error {
+  color: #dc3545;
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+.pkce-flow .status {
+  margin-top: 16px;
+  font-size: 14px;
+  color: #666;
+}
+
+.pkce-flow .success {
+  color: #28a745;
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+.pkce-flow .token-info {
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 16px;
+  margin: 16px 0;
+  text-align: left;
+}
+
+.pkce-flow .token-header {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.pkce-flow .token-display {
+  font-family: monospace;
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+.pkce-flow .copy-button {
+  background-color: #4a90e2;
+  margin-top: 8px;
+}
+
+.pkce-flow .copy-button:hover {
+  background-color: #357abd;
+}
+
+.pkce-flow .button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.pkce-flow .button-group .button {
+  width: 100%;
+}
+
+.pkce-flow .logout-button {
+  background-color: #dc3545;
+}
+
+.pkce-flow .logout-button:hover {
+  background-color: #c82333;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .pkce-flow .container {
+    background: #1a1a1a;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  }
+
+  .pkce-flow .title {
+    color: #fff;
+  }
+
+  .pkce-flow .description {
+    color: #ccc;
+  }
+
+  .pkce-flow .status {
+    color: #ccc;
+  }
+
+  .pkce-flow .token-info {
+    background: #2a2a2a;
+  }
+
+  .pkce-flow .token-display {
+    background: #1a1a1a;
+    border-color: #444;
+  }
+
+  .pkce-flow .token-header {
+    color: #ccc;
+  }
+} 
