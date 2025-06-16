@@ -8,6 +8,7 @@
  *   token_url: string,
  *   redirect_uri: string,
  *   scopes: string,
+ *   logout_url: string,
  *   code_verifier: string,
  *   code_challenge: string,
  *   state: string,
@@ -21,6 +22,7 @@
  *   error_message: string,
  *   start_auth: boolean,
  *   handle_callback: string,
+ *   logout_requested: boolean,
  *   hostname: string
  * }} Model
  */
@@ -130,10 +132,7 @@ function render({ model, el }) {
     if (status === 'not_started') {
       setDisplayStyle(initialSection, 'block');
       if (startAuthBtn) {
-        setHtmlContent(
-          startAuthBtn,
-          `<span class="btn-text">Sign in with ${model.get('provider_name')}</span>`
-        );
+        setHtmlContent(startAuthBtn, `<span class="btn-text">Sign in with ${model.get('provider_name')}</span>`);
         startAuthBtn.disabled = false;
       }
     } else if (status === 'initiating') {
@@ -198,12 +197,12 @@ function render({ model, el }) {
     const checkAuthUrl = setInterval(() => {
       const authUrl = model.get('authorization_url');
       if (debug) console.log('[moutils:pkce_flow] Checking authorization URL:', authUrl);
-      
+
       // Check if the URL has parameters (contains a ?)
       if (authUrl && authUrl.includes('?')) {
         clearInterval(checkAuthUrl);
         if (debug) console.log('[moutils:pkce_flow] Opening authorization URL:', authUrl);
-        
+
         // Store the state and code verifier in localStorage before redirecting
         const url = new URL(authUrl);
         const state = url.searchParams.get('state');
@@ -216,8 +215,8 @@ function render({ model, el }) {
           if (debug) console.log('[moutils:pkce_flow] Storing code verifier in localStorage:', codeVerifier);
           localStorage.setItem('pkce_code_verifier', codeVerifier);
         }
-        
-        window.location.href = authUrl;  // Open in same window instead of new tab
+
+        window.location.href = authUrl; // Open in same window instead of new tab
       }
     }, 100); // Check every 100ms
 
@@ -235,11 +234,11 @@ function render({ model, el }) {
   function handleUrlChange() {
     const url = window.location.href;
     if (debug) console.log('[moutils:pkce_flow] Checking URL:', url);
-    
+
     // Check if we have a callback URL with code and state
     if (url.includes('code=') && url.includes('state=')) {
       if (debug) console.log('[moutils:pkce_flow] Found callback URL:', url);
-      
+
       // Get the stored state and code verifier from localStorage
       const storedState = localStorage.getItem('pkce_state');
       const storedCodeVerifier = localStorage.getItem('pkce_code_verifier');
@@ -247,18 +246,18 @@ function render({ model, el }) {
         console.log('[moutils:pkce_flow] Retrieved state from localStorage:', storedState);
         console.log('[moutils:pkce_flow] Retrieved code verifier from localStorage:', storedCodeVerifier);
       }
-      
+
       // Set the callback URL and code verifier in the model to trigger Python processing
       model.set('handle_callback', url);
       if (storedCodeVerifier) {
         model.set('code_verifier', storedCodeVerifier);
       }
       model.save_changes();
-      
+
       // Clear the URL parameters to prevent re-processing
       const baseUrl = url.split('?')[0];
       window.history.replaceState({}, document.title, baseUrl);
-      
+
       // Clear the stored state and code verifier
       localStorage.removeItem('pkce_state');
       localStorage.removeItem('pkce_code_verifier');
@@ -274,10 +273,12 @@ function render({ model, el }) {
     }
 
     const accessToken = model.get('access_token');
-    if (accessToken) {
+    const logoutUrl = model.get('logout_url');
+
+    if (accessToken && logoutUrl) {
       try {
-        // Call Cloudflare's OAuth revocation endpoint
-        const response = await fetch('https://dash.cloudflare.com/oauth2/revoke', {
+        // Call the provider's OAuth revocation endpoint
+        const response = await fetch(logoutUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -301,7 +302,7 @@ function render({ model, el }) {
     }
 
     // Set logout flag to trigger Python handler
-    model.set('logout', true);
+    model.set('logout_requested', true);
     model.save_changes();
   }
 }
@@ -312,7 +313,7 @@ function render({ model, el }) {
  */
 function initialize({ model }) {
   if (debug) console.log('[moutils:pkce_flow] Initializing widget');
-  
+
   // Set the hostname from the current location
   const hostname = window.location.hostname;
   if (debug) {
