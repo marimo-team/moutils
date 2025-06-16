@@ -15,7 +15,7 @@ def _():
 
     df = DeviceFlow(
         provider="github",
-        client_id="Iv23lizZAx1IpMzYpu7C",
+        client_id="Iv23lizZAx1IpMzYou7C",
         debug=True,
     )
 
