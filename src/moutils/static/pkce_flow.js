@@ -23,7 +23,8 @@
  *   start_auth: boolean,
  *   handle_callback: string,
  *   logout_requested: boolean,
- *   hostname: string
+ *   hostname: string,
+ *   port: string
  * }} Model
  */
 
@@ -314,14 +315,18 @@ function render({ model, el }) {
 function initialize({ model }) {
   if (debug) console.log('[moutils:pkce_flow] Initializing widget');
 
-  // Set the hostname from the current location
+  // Set the hostname and port from the current location
   const hostname = window.location.hostname;
+  const port = window.location.port;
   if (debug) {
     console.log('[moutils:pkce_flow] Current location:', window.location.href);
     console.log('[moutils:pkce_flow] Raw hostname:', hostname);
+    console.log('[moutils:pkce_flow] Raw port:', port);
     console.log('[moutils:pkce_flow] Setting hostname traitlet to:', hostname);
+    console.log('[moutils:pkce_flow] Setting port traitlet to:', port);
   }
   model.set('hostname', hostname);
+  model.set('port', port);
   model.save_changes();
 }
 

@@ -43,9 +43,7 @@ DEFAULTS_FOR_PROVIDER = {
         "token_url": "https://dash.cloudflare.com/oauth2/token",
         "authorization_url": "https://dash.cloudflare.com/oauth2/auth",
         "logout_url": "https://dash.cloudflare.com/oauth2/revoke",
-        "scopes": (
-            "account:read user:read secrets_store:read rag:read aiaudit:read pipelines:read aig:read ai:read pages:read lb:read dns_records:read zone:read workers_tail:read access:read logpush:read teams:read sso-connector:read"
-        ),
+        "scopes": "notebook-examples:read",
     },
     "github": {
         "provider_name": "GitHub",
@@ -668,6 +666,7 @@ class PKCEFlow(anywidget.AnyWidget):
     scopes = traitlets.Unicode().tag(sync=True)
     logout_url = traitlets.Unicode().tag(sync=True)
     hostname = traitlets.Unicode("").tag(sync=True)
+    port = traitlets.Unicode("").tag(sync=True)
 
     # PKCE state
     code_verifier = traitlets.Unicode("").tag(sync=True)
@@ -814,7 +813,6 @@ class PKCEFlow(anywidget.AnyWidget):
 
     def _generate_state(self) -> str:
         """Generate a state parameter appended to any additional state provided."""
-        # Get hostname from traitlet
         hostname = self.hostname
         sandbox_id = ""
 
@@ -823,9 +821,11 @@ class PKCEFlow(anywidget.AnyWidget):
 
         # Handle localhost case
         if hostname == "localhost":
-            sandbox_id = "localhost:2718"
+            port = self.port
+            sandbox_id = f"{hostname}:{port}" if port else hostname
             if self.debug:
                 self._log(f"Detected localhost, setting sandbox_id to: {sandbox_id}")
+
         # Handle sandbox.marimo.app format
         elif ".sandbox.marimo.app" in hostname:
             # Extract the random string before .sandbox.marimo.app
