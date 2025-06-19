@@ -14,6 +14,7 @@ import traitlets
 import base64
 import hashlib
 import secrets
+import requests
 from urllib.parse import parse_qs, urlparse
 
 
@@ -43,9 +44,7 @@ DEFAULTS_FOR_PROVIDER = {
         "token_url": "https://dash.cloudflare.com/oauth2/token",
         "authorization_url": "https://dash.cloudflare.com/oauth2/auth",
         "logout_url": "https://dash.cloudflare.com/oauth2/revoke",
-        "scopes": (
-            "account:read user:read secrets_store:read rag:read aiaudit:read pipelines:read aig:read ai:read pages:read lb:read dns_records:read zone:read workers_tail:read access:read logpush:read teams:read sso-connector:read"
-        ),
+        "scopes": "notebook-examples:read",
     },
     "github": {
         "provider_name": "GitHub",
@@ -554,27 +553,93 @@ class DeviceFlow(anywidget.AnyWidget):
                 },
             )
 
-            # Make request
-            with urllib.request.urlopen(req) as response:
-                response_data = response.read().decode("utf-8")
-                self._log("Token response received")
+            # Smart fallback mechanism: try direct connection first, then proxy if needed
+            response = None
+            error_to_retry = None
+            
+            # First attempt: Try direct connection (no proxy)
+            try:
+                if self.debug:
+                    self._log("Attempting direct connection to OAuth provider")
+                
+                # Make request without proxy
+                with urllib.request.urlopen(req) as response:
+                    response_data = response.read().decode("utf-8")
+                    self._log("Token response received")
 
-                # Parse response (could be JSON or URL-encoded)
-                content_type = response.getheader("Content-Type", "")
-                if "application/json" in content_type:
-                    self._log("Parsing JSON token response")
-                    return json.loads(response_data)
+                    # Parse response (could be JSON or URL-encoded)
+                    content_type = response.getheader("Content-Type", "")
+                    if "application/json" in content_type:
+                        self._log("Parsing JSON token response")
+                        return json.loads(response_data)
+                    else:
+                        # Parse URL-encoded response
+                        self._log("Parsing URL-encoded token response")
+                        parsed_data: OAuthResponseDict = {}
+                        for pair in response_data.split("&"):
+                            if "=" in pair:
+                                key, value = pair.split("=", 1)
+                                parsed_data[urllib.parse.unquote(key)] = (
+                                    urllib.parse.unquote(value)
+                                )
+                        return parsed_data
+                
+            except (urllib.error.URLError, ConnectionError, OSError) as e:
+                # These errors suggest network/proxy issues that might be resolved with a proxy
+                error_to_retry = e
+                if self.debug:
+                    self._log(f"Direct connection failed with {type(e).__name__}: {str(e)}")
+                
+                # If we have a proxy configured, try with proxy
+                if hasattr(self, 'proxy') and self.proxy:
+                    if self.debug:
+                        self._log(f"Retrying with proxy: {self.proxy}")
+                    
+                    try:
+                        # Format proxy URL properly
+                        if self.proxy.startswith(('http://', 'https://')):
+                            proxy_url = self.proxy
+                        else:
+                            # Assume HTTPS if no protocol specified
+                            proxy_url = f"https://{self.proxy}"
+                        
+                        if self.debug:
+                            self._log(f"Formatted proxy URL: {proxy_url}")
+                        
+                        proxy_handler = urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url})
+                        opener = urllib.request.build_opener(proxy_handler)
+                        urllib.request.install_opener(opener)
+
+                        # Make request with proxy
+                        with urllib.request.urlopen(req) as response:
+                            response_data = response.read().decode("utf-8")
+                            self._log("Token response received")
+
+                            # Parse response (could be JSON or URL-encoded)
+                            content_type = response.getheader("Content-Type", "")
+                            if "application/json" in content_type:
+                                self._log("Parsing JSON token response")
+                                return json.loads(response_data)
+                            else:
+                                # Parse URL-encoded response
+                                self._log("Parsing URL-encoded token response")
+                                parsed_data: OAuthResponseDict = {}
+                                for pair in response_data.split("&"):
+                                    if "=" in pair:
+                                        key, value = pair.split("=", 1)
+                                        parsed_data[urllib.parse.unquote(key)] = (
+                                            urllib.parse.unquote(value)
+                                        )
+                                return parsed_data
+                                
+                    except Exception as proxy_error:
+                        if self.debug:
+                            self._log(f"Proxy connection also failed: {str(proxy_error)}")
+                        # If both direct and proxy fail, raise the original error
+                        raise error_to_retry
                 else:
-                    # Parse URL-encoded response
-                    self._log("Parsing URL-encoded token response")
-                    parsed_data: OAuthResponseDict = {}
-                    for pair in response_data.split("&"):
-                        if "=" in pair:
-                            key, value = pair.split("=", 1)
-                            parsed_data[urllib.parse.unquote(key)] = (
-                                urllib.parse.unquote(value)
-                            )
-                    return parsed_data
+                    # No proxy configured, raise the original error
+                    raise error_to_retry
 
         except urllib.error.HTTPError as e:
             self._log(f"HTTP error in token request: {e.code} {e.reason}")
@@ -605,24 +670,24 @@ class DeviceFlow(anywidget.AnyWidget):
                     "token": self.access_token,
                     "token_type_hint": "access_token",
                 }
-                encoded_data = urllib.parse.urlencode(data).encode("utf-8")
-
-                req = urllib.request.Request(
-                    revoke_url,
-                    data=encoded_data,
-                    headers={
-                        "Content-Type": "application/x-www-form-urlencoded",
-                    },
+                
+                # Use the smart fallback helper method
+                response_data = self._make_request_with_fallback(
+                    url=revoke_url,
                     method="POST",
+                    data=data,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    use_requests=True
                 )
+                
+                # Check if the response indicates success
+                if "error" not in response_data:
+                    self._log("Token revoked successfully")
+                else:
+                    self._log(f"Token revocation returned error: {response_data}")
 
-                try:
-                    with urllib.request.urlopen(req) as _:
-                        self._log("Token revoked successfully")
-                except urllib.error.HTTPError as e:
-                    self._log(f"HTTP error in token revocation: {e.code} {e.reason}")
-                except Exception as e:
-                    self._log(f"Error revoking token: {str(e)}")
+        except requests.exceptions.HTTPError as e:
+            self._log(f"HTTP error in token revocation: {e.response.status_code} {e.response.reason}")
         except Exception as e:
             self._log(f"Error during logout: {str(e)}")
         finally:
@@ -668,6 +733,8 @@ class PKCEFlow(anywidget.AnyWidget):
     scopes = traitlets.Unicode().tag(sync=True)
     logout_url = traitlets.Unicode().tag(sync=True)
     hostname = traitlets.Unicode("").tag(sync=True)
+    port = traitlets.Unicode("").tag(sync=True)
+    proxy = traitlets.Unicode("").tag(sync=True)
 
     # PKCE state
     code_verifier = traitlets.Unicode("").tag(sync=True)
@@ -708,6 +775,7 @@ class PKCEFlow(anywidget.AnyWidget):
         redirect_uri: Optional[str] = None,
         scopes: Optional[str] = None,
         logout_url: Optional[str] = None,
+        proxy: Optional[str] = None,
         additional_state: Optional[Callable[[], Dict[str, Any]]] = None,
         on_success: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
@@ -724,6 +792,7 @@ class PKCEFlow(anywidget.AnyWidget):
             redirect_uri: URL where the provider will redirect after authorization
             scopes: Space-separated list of OAuth scopes to request
             logout_url: URL to revoke tokens (defaults to provider default)
+            proxy: Proxy URL to use for HTTP requests (e.g., "https://proxy.example.com")
             on_success: Callback function when authentication succeeds
             on_error: Callback function when authentication fails
             debug: Whether to show debug information
@@ -791,6 +860,7 @@ class PKCEFlow(anywidget.AnyWidget):
             redirect_uri=redirect_uri,
             scopes=scopes,
             logout_url=logout_url,
+            proxy=proxy or "",
         )
 
     def _log(self, message: str) -> None:
@@ -814,7 +884,6 @@ class PKCEFlow(anywidget.AnyWidget):
 
     def _generate_state(self) -> str:
         """Generate a state parameter appended to any additional state provided."""
-        # Get hostname from traitlet
         hostname = self.hostname
         sandbox_id = ""
 
@@ -823,9 +892,11 @@ class PKCEFlow(anywidget.AnyWidget):
 
         # Handle localhost case
         if hostname == "localhost":
-            sandbox_id = "localhost:2718"
+            port = self.port
+            sandbox_id = f"{hostname}:{port}" if port else hostname
             if self.debug:
                 self._log(f"Detected localhost, setting sandbox_id to: {sandbox_id}")
+
         # Handle sandbox.marimo.app format
         elif ".sandbox.marimo.app" in hostname:
             # Extract the random string before .sandbox.marimo.app
@@ -899,6 +970,8 @@ class PKCEFlow(anywidget.AnyWidget):
             query_string = urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
             auth_url = f"{base_url}?{query_string}"
             if self.debug:
+                # Pre-process the auth_url to escape single quotes for the HTML
+                escaped_auth_url = auth_url.replace("'", "\\'")
                 debug_info = f"""
                 Base URL: {base_url}
                 Query String: {query_string}
@@ -907,7 +980,7 @@ class PKCEFlow(anywidget.AnyWidget):
                 Generated HTML button code:
                 <pre>
                 <button
-                    onclick="window.open('{auth_url.replace("'", "\\'")}', '_blank')"
+                    onclick="window.open('{escaped_auth_url}', '_blank')"
                     style="background-color: #f38020; color: black; border: none; padding: 10px 20px; font-size: 16px; cursor: pointer; border-radius: 4px;"
                 >
                     Login <i class="fa-brands fa-cloudflare"></i>
@@ -1068,6 +1141,170 @@ class PKCEFlow(anywidget.AnyWidget):
         self.status = "not_started"
         self.error_message = ""
 
+    def _make_request_with_fallback(self, url: str, method: str = "POST", data: Optional[Dict[str, Any]] = None, 
+                                   headers: Optional[Dict[str, str]] = None, 
+                                   use_requests: bool = True) -> Dict[str, Any]:
+        """Make an HTTP request with smart fallback: try direct connection first, then proxy if needed.
+        
+        Args:
+            url: The URL to request
+            method: HTTP method (GET, POST, etc.)
+            data: Request data (for POST requests)
+            headers: Request headers
+            use_requests: Whether to use requests library (True) or urllib (False)
+            
+        Returns:
+            Parsed response data
+            
+        Raises:
+            Exception: If both direct and proxy connections fail
+        """
+        if headers is None:
+            headers = {}
+        if data is None:
+            data = {}
+            
+        if self.debug:
+            self._log(f"Making {method} request to {url} with fallback")
+        
+        # First attempt: Try direct connection (no proxy)
+        try:
+            if self.debug:
+                self._log("Attempting direct connection")
+            
+            if use_requests:
+                # Use requests library
+                response = requests.request(
+                    method,
+                    url,
+                    data=data,
+                    headers=headers,
+                    proxies=None,  # No proxy for direct connection
+                    timeout=30
+                )
+                
+                # Parse response
+                content_type = response.headers.get("Content-Type", "")
+                if "application/json" in content_type:
+                    return response.json()
+                else:
+                    # Parse URL-encoded response
+                    response_text = response.text
+                    parsed_data = {}
+                    for pair in response_text.split("&"):
+                        if "=" in pair:
+                            key, value = pair.split("=", 1)
+                            parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                    return parsed_data
+            else:
+                # Use urllib
+                if method == "POST" and data:
+                    encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+                    req = urllib.request.Request(url, data=encoded_data, headers=headers)
+                else:
+                    req = urllib.request.Request(url, headers=headers)
+                
+                with urllib.request.urlopen(req) as response:
+                    response_data = response.read().decode("utf-8")
+                    
+                    # Parse response
+                    content_type = response.getheader("Content-Type", "")
+                    if "application/json" in content_type:
+                        return json.loads(response_data)
+                    else:
+                        # Parse URL-encoded response
+                        parsed_data = {}
+                        for pair in response_data.split("&"):
+                            if "=" in pair:
+                                key, value = pair.split("=", 1)
+                                parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                        return parsed_data
+                
+        except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError, 
+                requests.exceptions.SSLError, urllib.error.URLError, ConnectionError, OSError) as e:
+            # These errors suggest network/proxy issues that might be resolved with a proxy
+            error_to_retry = e
+            if self.debug:
+                self._log(f"Direct connection failed with {type(e).__name__}: {str(e)}")
+            
+            # If we have a proxy configured, try with proxy
+            if hasattr(self, 'proxy') and self.proxy:
+                if self.debug:
+                    self._log(f"Retrying with proxy: {self.proxy}")
+                
+                try:
+                    # Format proxy URL properly
+                    if self.proxy.startswith(('http://', 'https://')):
+                        proxy_url = self.proxy
+                    else:
+                        # Assume HTTPS if no protocol specified
+                        proxy_url = f"https://{self.proxy}"
+                    
+                    if self.debug:
+                        self._log(f"Formatted proxy URL: {proxy_url}")
+                    
+                    if use_requests:
+                        # Use requests with proxy
+                        proxies = {'http': proxy_url, 'https': proxy_url}
+                        response = requests.request(
+                            method,
+                            url,
+                            data=data,
+                            headers=headers,
+                            proxies=proxies,
+                            timeout=30
+                        )
+                        
+                        # Parse response
+                        content_type = response.headers.get("Content-Type", "")
+                        if "application/json" in content_type:
+                            return response.json()
+                        else:
+                            # Parse URL-encoded response
+                            response_text = response.text
+                            parsed_data = {}
+                            for pair in response_text.split("&"):
+                                if "=" in pair:
+                                    key, value = pair.split("=", 1)
+                                    parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                            return parsed_data
+                    else:
+                        # Use urllib with proxy
+                        proxy_handler = urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url})
+                        opener = urllib.request.build_opener(proxy_handler)
+                        urllib.request.install_opener(opener)
+                        
+                        if method == "POST" and data:
+                            encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+                            req = urllib.request.Request(url, data=encoded_data, headers=headers)
+                        else:
+                            req = urllib.request.Request(url, headers=headers)
+                        
+                        with urllib.request.urlopen(req) as response:
+                            response_data = response.read().decode("utf-8")
+                            
+                            # Parse response
+                            content_type = response.getheader("Content-Type", "")
+                            if "application/json" in content_type:
+                                return json.loads(response_data)
+                            else:
+                                # Parse URL-encoded response
+                                parsed_data = {}
+                                for pair in response_data.split("&"):
+                                    if "=" in pair:
+                                        key, value = pair.split("=", 1)
+                                        parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                                return parsed_data
+                            
+                except Exception as proxy_error:
+                    if self.debug:
+                        self._log(f"Proxy connection also failed: {str(proxy_error)}")
+                    # If both direct and proxy fail, raise the original error
+                    raise error_to_retry
+            else:
+                # No proxy configured, raise the original error
+                raise error_to_retry
+
     def _exchange_code_for_token(self) -> Dict[str, Any]:
         """Exchange the authorization code for tokens."""
         try:
@@ -1084,85 +1321,32 @@ class PKCEFlow(anywidget.AnyWidget):
                 self._log(f"Token request data: {data}")
 
             self._log(f"Exchanging code for token at {self.token_url}")
-            # Encode data for request
-            encoded_data = urllib.parse.urlencode(data).encode("utf-8")
-
-            # Set up request with browser-like headers
-            req = urllib.request.Request(
-                self.token_url,
-                data=encoded_data,
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Accept": "application/json",
-                    "Accept-Encoding": "gzip, deflate",
-                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Origin": self.redirect_uri.split("/oauth/callback")[0],
-                    "Referer": self.authorization_url,
-                    "Connection": "keep-alive",
-                },
+            
+            # Set up headers
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip, deflate",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": self.redirect_uri.split("/oauth/callback")[0],
+                "Referer": self.authorization_url,
+                "Connection": "keep-alive",
+            }
+            
+            # Use the smart fallback helper method
+            return self._make_request_with_fallback(
+                url=self.token_url,
+                method="POST",
+                data=data,
+                headers=headers,
+                use_requests=True
             )
 
-            # Make request
-            with urllib.request.urlopen(req) as response:
-                # Get the content encoding
-                content_encoding = response.getheader("Content-Encoding", "")
-
-                # Read the response data
-                response_data = response.read()
-
-                # Handle gzipped response
-                if content_encoding == "gzip":
-                    import gzip
-
-                    response_data = gzip.decompress(response_data)
-                elif content_encoding == "deflate":
-                    import zlib
-
-                    response_data = zlib.decompress(response_data)
-
-                # Decode the response data
-                response_text = response_data.decode("utf-8")
-                self._log("Token response received")
-
-                # Parse response
-                content_type = response.getheader("Content-Type", "")
-                if "application/json" in content_type:
-                    self._log("Parsing JSON token response")
-                    return json.loads(response_text)
-                else:
-                    # Parse URL-encoded response
-                    self._log("Parsing URL-encoded token response")
-                    parsed_data: Dict[str, Any] = {}
-                    for pair in response_text.split("&"):
-                        if "=" in pair:
-                            key, value = pair.split("=", 1)
-                            parsed_data[urllib.parse.unquote(key)] = (
-                                urllib.parse.unquote(value)
-                            )
-                    return parsed_data
-
-        except urllib.error.HTTPError as e:
-            self._log(f"HTTP error in token request: {e.code} {e.reason}")
+        except requests.exceptions.HTTPError as e:
+            self._log(f"HTTP error in token request: {e.response.status_code} {e.response.reason}")
             try:
-                # Get the content encoding
-                content_encoding = e.headers.get("Content-Encoding", "")
-
-                # Read the error response data
-                error_data = e.read()
-
-                # Handle gzipped error response
-                if content_encoding == "gzip":
-                    import gzip
-
-                    error_data = gzip.decompress(error_data)
-                elif content_encoding == "deflate":
-                    import zlib
-
-                    error_data = zlib.decompress(error_data)
-
-                # Decode the error response
-                error_text = error_data.decode("utf-8")
+                error_text = e.response.text
                 self._log(f"Error response body: {error_text}")
 
                 # Check if this is a Cloudflare challenge
@@ -1174,21 +1358,21 @@ class PKCEFlow(anywidget.AnyWidget):
                     }
 
                 try:
-                    error_json = json.loads(error_text)
+                    error_json = e.response.json()
                     self._log(f"Error response details: {error_json}")
                     return error_json
-                except json.JSONDecodeError:
+                except ValueError:
                     self._log("Error response is not JSON")
                     return {
                         "error": "http_error",
-                        "error_description": f"HTTP error {e.code}: {e.reason}",
+                        "error_description": f"HTTP error {e.response.status_code}: {e.response.reason}",
                         "error_details": error_text,
                     }
             except Exception as e2:
                 self._log(f"Error reading error response: {str(e2)}")
                 return {
                     "error": "http_error",
-                    "error_description": f"HTTP error {e.code}: {e.reason}",
+                    "error_description": f"HTTP error {e.response.status_code}: {e.response.reason}",
                 }
         except Exception as e:
             self._log(f"Exception in token request: {str(e)}")
@@ -1207,24 +1391,24 @@ class PKCEFlow(anywidget.AnyWidget):
                     "token": self.access_token,
                     "token_type_hint": "access_token",
                 }
-                encoded_data = urllib.parse.urlencode(data).encode("utf-8")
-
-                req = urllib.request.Request(
-                    revoke_url,
-                    data=encoded_data,
-                    headers={
-                        "Content-Type": "application/x-www-form-urlencoded",
-                    },
+                
+                # Use the smart fallback helper method
+                response_data = self._make_request_with_fallback(
+                    url=revoke_url,
                     method="POST",
+                    data=data,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    use_requests=True
                 )
+                
+                # Check if the response indicates success
+                if "error" not in response_data:
+                    self._log("Token revoked successfully")
+                else:
+                    self._log(f"Token revocation returned error: {response_data}")
 
-                try:
-                    with urllib.request.urlopen(req) as _:
-                        self._log("Token revoked successfully")
-                except urllib.error.HTTPError as e:
-                    self._log(f"HTTP error in token revocation: {e.code} {e.reason}")
-                except Exception as e:
-                    self._log(f"Error revoking token: {str(e)}")
+        except requests.exceptions.HTTPError as e:
+            self._log(f"HTTP error in token revocation: {e.response.status_code} {e.response.reason}")
         except Exception as e:
             self._log(f"Error during logout: {str(e)}")
         finally:

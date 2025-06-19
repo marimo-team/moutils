@@ -12,6 +12,7 @@ def _():
         provider="cloudflare",
         client_id="ec85d9cd-ff12-4d96-a376-432dbcf0bbfc",
         redirect_uri="https://auth.sandbox.marimo.app/oauth/sso-callback",
+        proxy="examples-api-proxy.staging.notebooks.cfdata.org", # Fallback proxy for WASM/browser environments
         debug=True,
     )
 
