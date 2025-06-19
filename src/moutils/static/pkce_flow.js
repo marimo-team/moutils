@@ -24,7 +24,8 @@
  *   handle_callback: string,
  *   logout_requested: boolean,
  *   hostname: string,
- *   port: string
+ *   port: string,
+ *   proxy: string
  * }} Model
  */
 
