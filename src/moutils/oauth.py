@@ -908,6 +908,14 @@ class PKCEFlow(anywidget.AnyWidget):
                         f"Detected sandbox.marimo.app, extracted sandbox_id: {sandbox_id}"
                     )
 
+        # Otherwise fallback to hostname as sandbox_id
+        else:
+            sandbox_id = hostname
+            if self.debug:
+                self._log(
+                    f"Fallback hostname for sandbox_id: {sandbox_id}"
+                )
+
         state = {
             "sandbox_id": sandbox_id,
             "nonce": f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}",
