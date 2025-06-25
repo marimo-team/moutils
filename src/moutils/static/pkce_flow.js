@@ -319,15 +319,19 @@ function initialize({ model }) {
   // Set the hostname and port from the current location
   const hostname = window.location.hostname;
   const port = window.location.port;
+  const href = window.location.href;
+  
   if (debug) {
     console.log('[moutils:pkce_flow] Current location:', window.location.href);
     console.log('[moutils:pkce_flow] Raw hostname:', hostname);
     console.log('[moutils:pkce_flow] Raw port:', port);
     console.log('[moutils:pkce_flow] Setting hostname traitlet to:', hostname);
     console.log('[moutils:pkce_flow] Setting port traitlet to:', port);
+    console.log('[moutils:pkce_flow] Setting href traitlet to:', href);
   }
   model.set('hostname', hostname);
   model.set('port', port);
+  model.set('href', href);
   model.save_changes();
 }
 

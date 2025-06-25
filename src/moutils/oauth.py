@@ -735,6 +735,7 @@ class PKCEFlow(anywidget.AnyWidget):
     hostname = traitlets.Unicode("").tag(sync=True)
     port = traitlets.Unicode("").tag(sync=True)
     proxy = traitlets.Unicode("").tag(sync=True)
+    href = traitlets.Unicode("").tag(sync=True)
 
     # PKCE state
     code_verifier = traitlets.Unicode("").tag(sync=True)
@@ -917,8 +918,9 @@ class PKCEFlow(anywidget.AnyWidget):
                 )
 
         state = {
-            "sandbox_id": sandbox_id,
+            "href": self.href,
             "nonce": f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}",
+            "sandbox_id": sandbox_id, 
         }
         if self.additional_state is not None:
             state.update(self.additional_state())
