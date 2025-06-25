@@ -1051,7 +1051,6 @@ class PKCEFlow(anywidget.AnyWidget):
 
     def _handle_callback(self, change: Dict[str, Any]) -> None:
         """Handle callback URL from the frontend."""
-        print(f"Callback URL received from frontend: {change['new']}")
         if change["new"]:
             self._log("Callback URL received from frontend")
             callback_url = change["new"]
