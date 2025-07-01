@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, TypedDict, Union, cast
 import urllib.parse
 import urllib.request
 import urllib.error
+from collections import OrderedDict
 
 import anywidget
 import traitlets
@@ -917,11 +918,11 @@ class PKCEFlow(anywidget.AnyWidget):
                     f"Fallback hostname for sandbox_id: {sandbox_id}"
                 )
 
-        state = {
-            "href": self.href,
-            "nonce": f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}",
-            "sandbox_id": sandbox_id, 
-        }
+        state = OrderedDict([
+            ("sandbox_id", sandbox_id),
+            ("href", self.href),
+            ("nonce", f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}"),
+        ])
         if self.additional_state is not None:
             state.update(self.additional_state())
 
@@ -1138,6 +1139,14 @@ class PKCEFlow(anywidget.AnyWidget):
     def reset(self) -> None:
         """Reset the authentication state."""
         self._log("Resetting authentication state")
+        
+        # Store configuration properties that should persist
+        hostname = self.hostname
+        port = self.port
+        href = self.href
+        proxy = self.proxy
+        
+        # Reset authentication state
         self.code_verifier = ""
         self.code_challenge = ""
         self.state = ""
@@ -1149,6 +1158,12 @@ class PKCEFlow(anywidget.AnyWidget):
         self.authorized_scopes = []
         self.status = "not_started"
         self.error_message = ""
+        
+        # Restore configuration properties
+        self.hostname = hostname
+        self.port = port
+        self.href = href
+        self.proxy = proxy
 
     def _make_request_with_fallback(self, url: str, method: str = "POST", data: Optional[Dict[str, Any]] = None, 
                                    headers: Optional[Dict[str, str]] = None, 
