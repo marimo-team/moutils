@@ -11,75 +11,68 @@
 
 import marimo
 
-__generated_with = "0.14.7"
 
-app = marimo.App(
-    width="full",
-    auto_download=["ipynb", "html"],
-)
+__generated_with = "0.11.26"
+app = marimo.App(width="full", auto_download=["ipynb", "html"])
 
 
-####################
-# Helper Functions #
-####################
 @app.cell(hide_code=True)
-async def _():
+def _():
     # Helper Functions - click to view code
     import json
     import marimo as mo
     from urllib.request import Request, urlopen
+    import warnings
+    warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
 
+    # Configure OAuth endpoints based on environment
     try:
         import js
+
         origin = js.eval("self.location?.origin")
-        print(f"WASM environment detected - origin: {origin}")
-        # Configure OAuth endpoints based on environment
+        # print(f"WASM environment detected - origin: {origin}")
         if "localhost:8088" in origin:
-            # Local development with Cloudflare Pages
-            print("Environment: Local WASM with Cloudflare Pages")
+            # print("Environment: Local WASM with Cloudflare Pages")
             oauth_config = {
                 "logout_url": f"{origin}/oauth/revoke",
                 "redirect_uri": f"{origin}/oauth/callback",
-                "token_url": f"{origin}/oauth/token"
+                "token_url": f"{origin}/oauth/token",
+                "use_new_tab": True,
             }
         elif "localhost" in origin:
-            # Local WASM without Cloudflare Pages
-            print("Environment: Local WASM (standard)")
+            # print("Environment: Local WASM (standard)")
             origin = "https://auth.sandbox.marimo.app"
             oauth_config = {
-                "logout_url": f"{origin}/oauth/revoke",
+                "logout_url": f"https://dash.cloudflare.com/oauth2/oauth/revoke",
                 "redirect_uri": f"{origin}/oauth/sso-callback",
-                "token_url": f"{origin}/oauth/token"
+                "token_url": "https://dash.cloudflare.com/oauth2/token",
+                "use_new_tab": False,
             }
         else:
-            # Production WASM environment
-            print("Environment: Production WASM")
+            # print("Environment: Production WASM")
             oauth_config = {
                 "logout_url": f"{origin}/oauth/revoke",
-                "redirect_uri": f"{origin}/oauth/sso-callback",
-                "token_url": f"{origin}/oauth/token"
+                "redirect_uri": f"{origin}/oauth/callback",
+                "token_url": f"{origin}/oauth/token",
+                "use_new_tab": True,
             }
     except AttributeError:
-        # Running in Python environment (not WASM)
-        print("Environment: Local Python")
+        # print("Environment: Local Python")
         origin = "https://auth.sandbox.marimo.app"
         oauth_config = {
-            "logout_url": f"{origin}/oauth/revoke",
+            "logout_url": f"https://dash.cloudflare.com/oauth2/revoke",
             "redirect_uri": f"{origin}/oauth/sso-callback",
-            "token_url": f"{origin}/oauth/token",
-            "proxy": "https://cors-anywhere.herokuapp.com/https://example.com"
+            "token_url": "https://dash.cloudflare.com/oauth2/token",
+            "proxy": "https://corsproxy.marimo.app",
+            "use_new_tab": False,
         }
 
     # Debug OAuth config
-    for key, value in oauth_config.items():
-        print(f"{key}: {value}")
+    # for key, value in oauth_config.items():
+    #     print(f"{key}: {value}")
+    return Request, js, json, mo, oauth_config, origin, urlopen
 
-    return json, mo, Request, urlopen, origin, oauth_config
 
-
-###############
-# Login Cells #
-###############
 @app.cell(hide_code=True)
 def _(oauth_config):
     # Login to Cloudflare - click to view code
@@ -89,13 +82,15 @@ def _(oauth_config):
     df = PKCEFlow(
         provider="cloudflare",
         client_id="ec85d9cd-ff12-4d96-a376-432dbcf0bbfc",
-        logout_url=oauth_config["logout_url"],
-        redirect_uri=oauth_config["redirect_uri"],
-        token_url=oauth_config["token_url"],
-        proxy=oauth_config["proxy"],
+        logout_url=oauth_config.get("logout_url"),
+        redirect_uri=oauth_config.get("redirect_uri"),
+        token_url=oauth_config.get("token_url"),
+        proxy=oauth_config.get("proxy"),
+        use_new_tab=oauth_config.get("use_new_tab"),
+        debug=False,
     )
     df
-    return df
+    return PKCEFlow, df, requests
 
 
 @app.cell
