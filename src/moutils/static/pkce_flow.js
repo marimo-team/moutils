@@ -25,11 +25,144 @@
  *   logout_requested: boolean,
  *   hostname: string,
  *   port: string,
- *   proxy: string
+ *   proxy: string,
+ *   use_new_tab: boolean
  * }} Model
  */
 
 const debug = localStorage.getItem('moutils-debug') === 'true';
+
+/**
+ * Store OAuth token data in localStorage with expiration
+ * @param {string} token - The access token
+ * @param {string} tokenType - The token type (e.g., 'bearer')
+ * @param {string} refreshToken - The refresh token (optional)
+ * @param {number} expiresIn - Token expiration time in seconds
+ * @param {string} provider - The OAuth provider name
+ * @param {string[]} scopes - The authorized scopes
+ */
+function storeOAuthToken(token, tokenType, refreshToken, expiresIn, provider, scopes) {
+  const tokenData = {
+    access_token: token,
+    token_type: tokenType,
+    refresh_token: refreshToken || '',
+    expires_at: expiresIn ? Date.now() + (expiresIn * 1000) : null,
+    provider: provider,
+    scopes: scopes || [],
+    stored_at: Date.now()
+  };
+  
+  localStorage.setItem('__pkce_token_data', JSON.stringify(tokenData));
+  if (debug) console.log('[moutils:pkce_flow] Stored OAuth token data with expiration:', tokenData.expires_at);
+}
+
+/**
+ * Get stored OAuth token data from localStorage
+ * @returns {Object|null} The token data or null if not found/invalid
+ */
+function getStoredOAuthToken() {
+  try {
+    const tokenDataStr = localStorage.getItem('__pkce_token_data');
+    if (!tokenDataStr) return null;
+    
+    const tokenData = JSON.parse(tokenDataStr);
+    
+    // Check if token has expired
+    if (tokenData.expires_at && Date.now() > tokenData.expires_at) {
+      if (debug) console.log('[moutils:pkce_flow] Stored token has expired, removing');
+      localStorage.removeItem('__pkce_token_data');
+      return null;
+    }
+    
+    // Check if token is too old (more than 24 hours without expiration)
+    if (!tokenData.expires_at && (Date.now() - tokenData.stored_at) > 24 * 60 * 60 * 1000) {
+      if (debug) console.log('[moutils:pkce_flow] Stored token is too old (24h), removing');
+      localStorage.removeItem('__pkce_token_data');
+      return null;
+    }
+    
+    if (debug) console.log('[moutils:pkce_flow] Found valid stored OAuth token for provider:', tokenData.provider);
+    return tokenData;
+  } catch (error) {
+    if (debug) console.error('[moutils:pkce_flow] Error parsing stored token:', error);
+    localStorage.removeItem('__pkce_token_data');
+    return null;
+  }
+}
+
+/**
+ * Clear stored OAuth token data
+ */
+function clearStoredOAuthToken() {
+  localStorage.removeItem('__pkce_token_data');
+  if (debug) console.log('[moutils:pkce_flow] Cleared stored OAuth token data');
+}
+
+/**
+ * Check for OAuth token in URL parameters first, then localStorage
+ */
+function checkForOAuthToken() {
+  // Check URL parameters first (for same-tab flows)
+  const urlParams = new URLSearchParams(window.location.search);
+  const tokenFromUrl = urlParams.get('__pkce_value');
+  
+  if (tokenFromUrl) {
+    if (debug) console.log('[moutils:pkce_flow] Found OAuth token in URL parameters:', tokenFromUrl.substring(0, 20) + '...');
+    
+    // Store token in localStorage for future use (legacy format for backward compatibility)
+    localStorage.setItem('__pkce_token', tokenFromUrl);
+    
+    // Dispatch event to notify the widget
+    window.dispatchEvent(new CustomEvent('oauth-token', {
+      detail: { token: tokenFromUrl }
+    }));
+    
+    // Clear the token from URL
+    urlParams.delete('__pkce_value');
+    const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+    window.history.replaceState({}, document.title, newUrl);
+    return;
+  }
+  
+  // If no token in URL, check localStorage (for new-tab flows)
+  const storedToken = localStorage.getItem('__pkce_token');
+  if (storedToken) {
+    if (debug) console.log('[moutils:pkce_flow] Found OAuth token in localStorage (legacy):', storedToken.substring(0, 20) + '...');
+    window.dispatchEvent(new CustomEvent('oauth-token', {
+      detail: { token: storedToken }
+    }));
+    // Optional: clear it if you don't want to persist it
+    // localStorage.removeItem('__pkce_token');
+  }
+}
+
+/**
+ * Check for and restore valid stored OAuth token on page load
+ * @param {any} model - The widget model
+ * @returns {boolean} True if a token was restored, false otherwise
+ */
+function checkForStoredToken(model) {
+  const tokenData = getStoredOAuthToken();
+  if (tokenData) {
+    if (debug) console.log('[moutils:pkce_flow] Restoring stored OAuth token for provider:', tokenData.provider);
+    
+    // Set the token data in the model to trigger Python processing
+    model.set('access_token', tokenData.access_token);
+    model.set('token_type', tokenData.token_type);
+    model.set('refresh_token', tokenData.refresh_token);
+    model.set('authorized_scopes', tokenData.scopes);
+    model.set('status', 'success');
+    model.save_changes();
+    
+    // Dispatch event to notify any listeners
+    window.dispatchEvent(new CustomEvent('oauth-token-restored', {
+      detail: { tokenData: tokenData }
+    }));
+    
+    return true;
+  }
+  return false;
+}
 
 /**
  * Get the current origin and set it as the redirect URI
@@ -76,6 +209,52 @@ function setHtmlContent(element, html) {
 }
 
 /**
+ * Update the UI based on the current status
+ * @param {any} model
+ * @param {HTMLElement} initialSection
+ * @param {HTMLElement} pendingSection
+ * @param {HTMLElement} tokenSection
+ * @param {HTMLButtonElement} startAuthBtn
+ * @param {HTMLElement} statusMessage
+ */
+function updateUIForStatus(model, initialSection, pendingSection, tokenSection, startAuthBtn, statusMessage) {
+  const status = model.get('status');
+  if (debug) console.log('[moutils:pkce_flow] updateUIForStatus:', status);
+
+  // Reset all sections and button states first
+  setDisplayStyle(initialSection, 'none');
+  setDisplayStyle(pendingSection, 'none');
+  setDisplayStyle(tokenSection, 'none');
+  if (startAuthBtn) startAuthBtn.disabled = true;
+
+  if (status === 'error') {
+    setDisplayStyle(initialSection, 'block');
+    if (startAuthBtn) {
+      startAuthBtn.disabled = false;
+    }
+    return;
+  }
+
+  if (status === 'not_started') {
+    setDisplayStyle(initialSection, 'block');
+    if (startAuthBtn) {
+      setHtmlContent(startAuthBtn, `<span class="btn-text">Sign in with ${model.get('provider_name')}</span>`);
+      startAuthBtn.disabled = false;
+    }
+  } else if (status === 'initiating') {
+    setDisplayStyle(initialSection, 'block');
+    if (startAuthBtn) {
+      setHtmlContent(startAuthBtn, '<span class="spinner"></span> <span class="btn-text">Starting...</span>');
+    }
+  } else if (status === 'pending') {
+    setDisplayStyle(pendingSection, 'block');
+    setHtmlContent(statusMessage, '<p>Waiting for authorization...</p>');
+  } else if (status === 'success') {
+    setDisplayStyle(tokenSection, 'block');
+  }
+}
+
+/**
  * Render function for the PKCEFlow widget
  * @param {{ model: any, el: HTMLElement }} options
  */
@@ -90,6 +269,12 @@ function render({ model, el }) {
     model.get('client_id'),
     model.get('icon')
   );
+
+  // Check for OAuth token in localStorage on initialization (legacy)
+  checkForOAuthToken();
+  
+  // Check for and restore valid stored OAuth token on page load
+  const tokenRestored = checkForStoredToken(model);
 
   // Get UI elements with JSDoc type casts
   const startAuthBtn = /** @type {HTMLButtonElement | null} */ (el.querySelector('#startAuthBtn'));
@@ -114,41 +299,16 @@ function render({ model, el }) {
 
   // Update UI based on model changes
   model.on('change:status', () => {
-    const status = model.get('status');
-    if (debug) console.log('[moutils:pkce_flow] Status changed:', status);
-
-    // Reset all sections and button states first
-    setDisplayStyle(initialSection, 'none');
-    setDisplayStyle(pendingSection, 'none');
-    setDisplayStyle(tokenSection, 'none');
-    if (startAuthBtn) startAuthBtn.disabled = true;
-
-    if (status === 'error') {
-      setDisplayStyle(initialSection, 'block');
-      if (startAuthBtn) {
-        startAuthBtn.disabled = false;
-      }
-      return;
-    }
-
-    if (status === 'not_started') {
-      setDisplayStyle(initialSection, 'block');
-      if (startAuthBtn) {
-        setHtmlContent(startAuthBtn, `<span class="btn-text">Sign in with ${model.get('provider_name')}</span>`);
-        startAuthBtn.disabled = false;
-      }
-    } else if (status === 'initiating') {
-      setDisplayStyle(initialSection, 'block');
-      if (startAuthBtn) {
-        setHtmlContent(startAuthBtn, '<span class="spinner"></span> <span class="btn-text">Starting...</span>');
-      }
-    } else if (status === 'pending') {
-      setDisplayStyle(pendingSection, 'block');
-      setHtmlContent(statusMessage, '<p>Waiting for authorization...</p>');
-    } else if (status === 'success') {
-      setDisplayStyle(tokenSection, 'block');
-    }
+    updateUIForStatus(model, initialSection, pendingSection, tokenSection, startAuthBtn, statusMessage);
   });
+
+  // Immediately update UI after restoring token (in case status is already 'success')
+  // Use a small delay to ensure model changes are processed
+  if (tokenRestored) {
+    setTimeout(() => {
+      updateUIForStatus(model, initialSection, pendingSection, tokenSection, startAuthBtn, statusMessage);
+    }, 100);
+  }
 
   model.on('change:error_message', () => {
     const errorMessage = model.get('error_message');
@@ -211,14 +371,28 @@ function render({ model, el }) {
         const codeVerifier = model.get('code_verifier');
         if (state) {
           if (debug) console.log('[moutils:pkce_flow] Storing state in localStorage:', state);
-          localStorage.setItem('pkce_state', state);
+          localStorage.setItem('__pkce_state', state);
         }
         if (codeVerifier) {
           if (debug) console.log('[moutils:pkce_flow] Storing code verifier in localStorage:', codeVerifier);
-          localStorage.setItem('pkce_code_verifier', codeVerifier);
+          localStorage.setItem('__pkce_code_verifier', codeVerifier);
         }
 
-        window.location.href = authUrl; // Open in same window instead of new tab
+        // Determine the environment and handle accordingly
+        const origin = window.location.origin;
+        const useNewTab = model.get('use_new_tab');
+        if (debug) console.log('[moutils:pkce_flow] Current origin:', origin);
+        if (debug) console.log('[moutils:pkce_flow] Use new tab:', useNewTab);
+
+        if (useNewTab) {
+          // Use new tab flow
+          if (debug) console.log('[moutils:pkce_flow] Using new tab flow');
+          window.open(authUrl, '_blank');
+        } else {
+          // Use same tab flow
+          if (debug) console.log('[moutils:pkce_flow] Using same tab flow');
+          window.location.href = authUrl;
+        }
       }
     }, 100); // Check every 100ms
 
@@ -233,6 +407,33 @@ function render({ model, el }) {
   window.addEventListener('popstate', handleUrlChange);
   handleUrlChange();
 
+  // Listen for OAuth token events from localStorage
+  window.addEventListener('oauth-token', (event) => {
+    if (debug) console.log('[moutils:pkce_flow] Received oauth-token event:', event.detail);
+    const token = event.detail.token;
+    if (token) {
+      // Set the token in the model to trigger Python processing
+      model.set('access_token', token);
+      model.set('status', 'success');
+      model.save_changes();
+    }
+  });
+  
+  // Listen for token expiration time to trigger storage
+  model.on('change:token_expires_in', () => {
+    const expiresIn = model.get('token_expires_in');
+    const accessToken = model.get('access_token');
+    const tokenType = model.get('token_type');
+    const refreshToken = model.get('refresh_token');
+    const provider = model.get('provider');
+    const scopes = model.get('authorized_scopes');
+    
+    if (accessToken && expiresIn > 0) {
+      if (debug) console.log('[moutils:pkce_flow] Storing token with expiration:', expiresIn);
+      storeOAuthToken(accessToken, tokenType, refreshToken, expiresIn, provider, scopes);
+    }
+  });
+
   function handleUrlChange() {
     const url = window.location.href;
     if (debug) console.log('[moutils:pkce_flow] Checking URL:', url);
@@ -241,9 +442,25 @@ function render({ model, el }) {
     if (url.includes('code=') && url.includes('state=')) {
       if (debug) console.log('[moutils:pkce_flow] Found callback URL:', url);
 
+      // Parse the URL to get the authorization code
+      const urlParams = new URLSearchParams(window.location.search);
+      const authCode = urlParams.get('code');
+      const state = urlParams.get('state');
+      
+      if (debug) {
+        console.log('[moutils:pkce_flow] Authorization code:', authCode ? authCode.substring(0, 20) + '...' : 'none');
+        console.log('[moutils:pkce_flow] State:', state);
+      }
+
+      // Store the authorization code in localStorage as backup
+      if (authCode) {
+        localStorage.setItem('__pkce_auth_code', authCode);
+        if (debug) console.log('[moutils:pkce_flow] Stored auth code in localStorage');
+      }
+
       // Get the stored state and code verifier from localStorage
-      const storedState = localStorage.getItem('pkce_state');
-      const storedCodeVerifier = localStorage.getItem('pkce_code_verifier');
+      const storedState = localStorage.getItem('__pkce_state');
+      const storedCodeVerifier = localStorage.getItem('__pkce_code_verifier');
       if (debug) {
         console.log('[moutils:pkce_flow] Retrieved state from localStorage:', storedState);
         console.log('[moutils:pkce_flow] Retrieved code verifier from localStorage:', storedCodeVerifier);
@@ -256,13 +473,19 @@ function render({ model, el }) {
       }
       model.save_changes();
 
-      // Clear the URL parameters to prevent re-processing
-      const baseUrl = url.split('?')[0];
-      window.history.replaceState({}, document.title, baseUrl);
+      // Wait a moment for the Python side to process, then clear URL
+      setTimeout(() => {
+        // Clear the URL parameters to prevent re-processing
+        const baseUrl = url.split('?')[0];
+        window.history.replaceState({}, document.title, baseUrl);
+        if (debug) console.log('[moutils:pkce_flow] Cleared URL parameters');
 
-      // Clear the stored state and code verifier
-      localStorage.removeItem('pkce_state');
-      localStorage.removeItem('pkce_code_verifier');
+        // Clear the stored state and code verifier
+        localStorage.removeItem('__pkce_state');
+        localStorage.removeItem('__pkce_code_verifier');
+        localStorage.removeItem('__pkce_auth_code');
+        if (debug) console.log('[moutils:pkce_flow] Cleared localStorage items');
+      }, 1000); // Wait 1 second for Python processing
     }
   }
 
@@ -303,6 +526,10 @@ function render({ model, el }) {
       }
     }
 
+    // Clear stored token data
+    clearStoredOAuthToken();
+    localStorage.removeItem('__pkce_token'); // Clear legacy token too
+    
     // Set logout flag to trigger Python handler
     model.set('logout_requested', true);
     model.save_changes();
