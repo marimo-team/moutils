@@ -6,7 +6,7 @@ requires = ["hatchling"]
 dependencies = ["anywidget"]
 name = "moutils"
 readme = "README.md"
-version = "0.3.5"
+version = "0.3.6"
 
 # For projects not using `uv`, you can install these development dependencies with:
 # `pip install -e ".[dev]"`
