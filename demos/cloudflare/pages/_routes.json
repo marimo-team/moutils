@@ -1,0 +1,5 @@
+{
+    "version": 1,
+    "include": ["/oauth2/token", "/oauth2/revoke"],
+    "exclude": ["/index.html", "/html-wasm/*", "/assets/*"]
+}

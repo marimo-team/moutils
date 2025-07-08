@@ -1,0 +1,12 @@
+[flake8]
+max-line-length = 120
+
+# E731: use of lambda expressions (better for sorting keys)
+# E127: visual indentation (aligment of function parameters)
+# E226: whitespace around arithmetic operators (sometimes hurts readability)
+# W503: line break before binary operator (conflicts with W504: line break after binary operator)
+ignore = E731, E127, E226, W503
+
+exclude =
+    */.git/*
+    */__pycache__/*,

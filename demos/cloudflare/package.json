@@ -1,0 +1,15 @@
+{
+  "name": "cloudflare-moutils-demo",
+  "version": "0.1.1",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint --ignore-pattern 'eslint.config.*js' pages functions",
+    "preview": "wrangler pages dev --port 8088",
+    "deploy": "wrangler pages deploy"
+  },
+  "dependencies": {
+    "eslint": "^9.30.1",
+    "wrangler": "^4.24.0",
+    "dotenv": "^17.1.0"
+  }
+}

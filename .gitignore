@@ -8,3 +8,11 @@ __pycache__
 .ipynb_checkpoints
 
 _site
+__marimo__
+
+# demos
+demos/cloudflare/export
+demos/cloudflare/notebooks
+demos/cloudflare/.wrangler
+*.whl
+.tree-output.txt

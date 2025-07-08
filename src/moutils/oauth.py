@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, TypedDict, Union, cast
 import urllib.parse
 import urllib.request
 import urllib.error
+from collections import OrderedDict
 
 import anywidget
 import traitlets
@@ -247,8 +248,12 @@ class DeviceFlow(anywidget.AnyWidget):
 
     def _handle_token_change(self, change: Dict[str, Any]) -> None:
         """Handle changes to the access_token property."""
-        if change["new"] and self.on_success:
+        if self.debug:
+            self._log(f"_handle_token_change called: change={change}, current status={self.status}")
+        if change["new"]:
             self._log("Access token received, calling success callback")
+            # Always update status to success to trigger UI update
+            self.status = "success"
             token_data: Dict[str, Union[str, List[str], int]] = {
                 "access_token": self.access_token,
                 "token_type": self.token_type,
@@ -256,15 +261,15 @@ class DeviceFlow(anywidget.AnyWidget):
                 "scopes": self.authorized_scopes,
                 "provider": self.provider,
             }
-
             if self.refresh_token_expires_in:
                 token_data["refresh_token_expires_in"] = self.refresh_token_expires_in
-
-            # Call success callback
-            self.on_success(token_data)
-
+            # Call success callback if provided
+            if self.on_success:
+                self.on_success(token_data)
             # Ensure we don't trigger another auth flow
             self.start_auth = False
+            # Store token data for persistence (this will be handled by JavaScript)
+            self._store_token_for_persistence()
 
     def _handle_error_change(self, change: Dict[str, Any]) -> None:
         """Handle changes to the error_message property."""
@@ -303,7 +308,14 @@ class DeviceFlow(anywidget.AnyWidget):
 
     def reset(self) -> None:
         """Reset the authentication state."""
-        self._log("Resetting authentication state")
+        if self.debug:
+            self._log(f"reset called. Current access_token={self.access_token}, status={self.status}")
+        # Store configuration properties that should persist
+        hostname = self.hostname
+        port = self.port
+        href = self.href
+        proxy = self.proxy
+        # Reset authentication state
         self.device_code = ""
         self.user_code = ""
         self.access_token = ""
@@ -314,6 +326,11 @@ class DeviceFlow(anywidget.AnyWidget):
         self.status = "not_started"
         self.error_message = ""
         self._expires_at = 0
+        # Restore configuration properties
+        self.hostname = hostname
+        self.port = port
+        self.href = href
+        self.proxy = proxy
 
     def start_device_flow(self) -> None:
         """Start the device flow authentication process."""
@@ -693,6 +710,8 @@ class DeviceFlow(anywidget.AnyWidget):
         finally:
             # Reset all authentication state
             self.reset()
+            # Clear token expiration to trigger JavaScript cleanup
+            self.token_expires_in = 0
             # Update status to not_started
             self.status = "not_started"
             self._log("Logout complete")
@@ -736,6 +755,7 @@ class PKCEFlow(anywidget.AnyWidget):
     port = traitlets.Unicode("").tag(sync=True)
     proxy = traitlets.Unicode("").tag(sync=True)
     href = traitlets.Unicode("").tag(sync=True)
+    use_new_tab = traitlets.Bool(True).tag(sync=True)
 
     # PKCE state
     code_verifier = traitlets.Unicode("").tag(sync=True)
@@ -760,6 +780,9 @@ class PKCEFlow(anywidget.AnyWidget):
     start_auth = traitlets.Bool(False).tag(sync=True)
     handle_callback = traitlets.Unicode("").tag(sync=True)
     logout_requested = traitlets.Bool(False).tag(sync=True)
+    
+    # Token persistence
+    token_expires_in = traitlets.Int(0).tag(sync=True)
 
     # Events
     on_success = None
@@ -777,6 +800,7 @@ class PKCEFlow(anywidget.AnyWidget):
         scopes: Optional[str] = None,
         logout_url: Optional[str] = None,
         proxy: Optional[str] = None,
+        use_new_tab: Optional[bool] = None,
         additional_state: Optional[Callable[[], Dict[str, Any]]] = None,
         on_success: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
@@ -794,6 +818,7 @@ class PKCEFlow(anywidget.AnyWidget):
             scopes: Space-separated list of OAuth scopes to request
             logout_url: URL to revoke tokens (defaults to provider default)
             proxy: Proxy URL to use for HTTP requests (e.g., "https://proxy.example.com")
+            use_new_tab: Whether to open the authorization URL in a new tab (True) or same tab (False)
             on_success: Callback function when authentication succeeds
             on_error: Callback function when authentication fails
             debug: Whether to show debug information
@@ -862,6 +887,7 @@ class PKCEFlow(anywidget.AnyWidget):
             scopes=scopes,
             logout_url=logout_url,
             proxy=proxy or "",
+            use_new_tab=use_new_tab,
         )
 
     def _log(self, message: str) -> None:
@@ -917,11 +943,11 @@ class PKCEFlow(anywidget.AnyWidget):
                     f"Fallback hostname for sandbox_id: {sandbox_id}"
                 )
 
-        state = {
-            "href": self.href,
-            "nonce": f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}",
-            "sandbox_id": sandbox_id, 
-        }
+        state = OrderedDict([
+            ("sandbox_id", sandbox_id),
+            ("href", self.href),
+            ("nonce", f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}"),
+        ])
         if self.additional_state is not None:
             state.update(self.additional_state())
 
@@ -1013,8 +1039,12 @@ class PKCEFlow(anywidget.AnyWidget):
 
     def _handle_token_change(self, change: Dict[str, Any]) -> None:
         """Handle changes to the access_token property."""
-        if change["new"] and self.on_success:
+        if self.debug:
+            self._log(f"_handle_token_change called: change={change}, current status={self.status}")
+        if change["new"]:
             self._log("Access token received, calling success callback")
+            # Always update status to success to trigger UI update
+            self.status = "success"
             token_data: Dict[str, Union[str, List[str], int]] = {
                 "access_token": self.access_token,
                 "token_type": self.token_type,
@@ -1022,15 +1052,31 @@ class PKCEFlow(anywidget.AnyWidget):
                 "scopes": self.authorized_scopes,
                 "provider": self.provider,
             }
-
             if self.refresh_token_expires_in:
                 token_data["refresh_token_expires_in"] = self.refresh_token_expires_in
-
-            # Call success callback
-            self.on_success(token_data)
-
+            # Call success callback if provided
+            if self.on_success:
+                self.on_success(token_data)
             # Ensure we don't trigger another auth flow
             self.start_auth = False
+            # Store token data for persistence (this will be handled by JavaScript)
+            self._store_token_for_persistence()
+
+    def _store_token_for_persistence(self) -> None:
+        """Store token data in the widget for JavaScript persistence."""
+        if self.debug:
+            self._log("Storing token data for persistence")
+        
+        # Set the token expiration time to trigger JavaScript storage
+        # Most OAuth tokens expire in 1 hour (3600 seconds) if not specified
+        expires_in = 3600  # Default to 1 hour
+        
+        # Try to get expiration from token response if available
+        # This would need to be set when the token is received
+        if hasattr(self, '_token_expires_in') and self._token_expires_in:
+            expires_in = self._token_expires_in
+        
+        self.token_expires_in = expires_in
 
     def _handle_error_change(self, change: Dict[str, Any]) -> None:
         """Handle changes to the error_message property."""
@@ -1051,7 +1097,6 @@ class PKCEFlow(anywidget.AnyWidget):
 
     def _handle_callback(self, change: Dict[str, Any]) -> None:
         """Handle callback URL from the frontend."""
-        print(f"Callback URL received from frontend: {change['new']}")
         if change["new"]:
             self._log("Callback URL received from frontend")
             callback_url = change["new"]
@@ -1108,6 +1153,9 @@ class PKCEFlow(anywidget.AnyWidget):
                 self.refresh_token_expires_in = token_response.get(
                     "refresh_token_expires_in", 0
                 )
+                
+                # Store token expiration time for persistence
+                self._token_expires_in = token_response.get("expires_in", 3600)
 
                 # Parse scopes
                 if "scope" in token_response:
@@ -1118,6 +1166,9 @@ class PKCEFlow(anywidget.AnyWidget):
                 self.status = "success"
                 self.start_auth = False
                 self._log("Authentication successful")
+                
+                # Store token data for persistence
+                self._store_token_for_persistence()
                 return
 
             # Handle errors
@@ -1138,7 +1189,14 @@ class PKCEFlow(anywidget.AnyWidget):
 
     def reset(self) -> None:
         """Reset the authentication state."""
-        self._log("Resetting authentication state")
+        if self.debug:
+            self._log(f"reset called. Current access_token={self.access_token}, status={self.status}")
+        # Store configuration properties that should persist
+        hostname = self.hostname
+        port = self.port
+        href = self.href
+        proxy = self.proxy
+        # Reset authentication state
         self.code_verifier = ""
         self.code_challenge = ""
         self.state = ""
@@ -1147,9 +1205,15 @@ class PKCEFlow(anywidget.AnyWidget):
         self.token_type = ""
         self.refresh_token = ""
         self.refresh_token_expires_in = 0
+        self.token_expires_in = 0
         self.authorized_scopes = []
         self.status = "not_started"
         self.error_message = ""
+        # Restore configuration properties
+        self.hostname = hostname
+        self.port = port
+        self.href = href
+        self.proxy = proxy
 
     def _make_request_with_fallback(self, url: str, method: str = "POST", data: Optional[Dict[str, Any]] = None, 
                                    headers: Optional[Dict[str, str]] = None, 
@@ -1424,6 +1488,8 @@ class PKCEFlow(anywidget.AnyWidget):
         finally:
             # Reset all authentication state
             self.reset()
+            # Clear token expiration to trigger JavaScript cleanup
+            self.token_expires_in = 0
             # Update status to not_started
             self.status = "not_started"
             self._log("Logout complete")

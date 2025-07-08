@@ -1,0 +1,106 @@
+/* CSS: index.css */
+
+
+:root {
+    --sans-serif-family: -apple-system, 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    --monospace-family: 'Menlo', 'SF Mono', 'Andale Mono', 'Roboto Mono', 'Monaco', monospace;
+    --text-font-size: 16px;
+    --text-font-weight: 400;
+    --text-color: #424242;
+    --line-height: 1.5em;
+    --body-background-color: #fff;
+}
+
+* {
+    margin: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--sans-serif-family);
+    font-size: var(--text-font-size);
+    font-weight: var(--text-font-weight);
+    line-height: var(--line-height);
+    color: var(--text-color);
+    background: var(--body-background-color);
+    min-height: 100vh; width: 100vw;  /* support drag-and-drop in the full viewport */
+}
+
+h1 {
+    margin: 1.2em 0;
+    font-size: 48px;
+    font-weight: 600;
+}
+
+h1 span.name_primary {
+    font-weight: 600;
+}
+
+h1 span.name_secondary {
+    font-weight: 200;
+}
+
+p {
+    margin: 1.2em 2px;
+}
+
+a {
+    color: #0055dc;
+}
+
+#container {
+    padding: 20px 10vw;
+    max-width: 1100px;
+    margin: auto;
+}
+
+#container p:last-child::after {
+    content: '\00a0\25a0';
+}
+
+header {
+    width: 100%;
+}
+
+header .logo {
+    display: block;
+    margin: -10px auto -50px auto;
+    height: 350px;
+}
+
+#notebooks {
+    margin: 40px 20px;
+}
+
+#notebooks ul {
+    list-style: none;
+}
+
+#notebooks .title {
+    color: var(--text-color);
+    font-weight: bold;
+    text-decoration-color: #f68219;
+}
+
+#notebooks .description {
+    display: block;
+    font-size: 85%;
+    margin: 0.5em 0 1.5em 0;
+}
+
+
+@media only screen and (max-width: 720px) {
+    h1 {
+        font-size: 7vw;
+    }
+}
+
+@media only screen and (max-width: 620px) {
+    header .logo {
+        margin: -2vw auto -7vw -4vw;
+        height: 55vw;
+    }
+}
+
+
+/* EOF - index.css */

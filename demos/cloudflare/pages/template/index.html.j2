@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="chrome=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+
+  <link rel="stylesheet" type="text/css" href="assets/index.css" media="screen">
+
+  <script src="assets/index.js"></script>
+
+  <title>Cloudflare Demo</title>
+</head>
+<body>
+  <div id="container">
+    <header>
+      <h1>
+        <span class="name_primary">Cloudflare</span> <span class="name_secondary">Demo</span>
+      </h1>
+    </header>
+
+    <div id="notebooks">
+      <ul>
+      {%- for nb in notebooks %}
+          <li><a href="{{ root_path ~ '/' ~ nb.file }}" class="title">{{nb.title}}</a><span class="description">{{nb.description}}</span></li>
+      {%- endfor %}
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

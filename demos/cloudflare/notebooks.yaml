@@ -1,0 +1,13 @@
+notebooks:
+  - file: example.html
+    title: "Moutils Example"
+    description: "Example notebook demonstrating moutils functionality."
+  - file: deviceflow_login.html
+    title: "Device Flow Login"
+    description: "Device flow authentication example."
+  - file: pkceflow_login.html
+    title: "PKCE Flow Login"
+    description: "PKCE authentication flow example."
+  - file: shell_example.html
+    title: "Shell Example"
+    description: "Shell command execution example."
