@@ -86,7 +86,7 @@ def _(oauth_config):
         redirect_uri=oauth_config.get("redirect_uri"),
         token_url=oauth_config.get("token_url"),
         proxy=oauth_config.get("proxy"),
-        use_new_tab=True,
+        use_new_tab=oauth_config.get("use_new_tab"),
         debug=False,
     )
     df
