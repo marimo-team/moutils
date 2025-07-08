@@ -43,7 +43,7 @@ def _():
             # print("Environment: Local WASM (standard)")
             origin = "https://auth.sandbox.marimo.app"
             oauth_config = {
-                "logout_url": f"https://dash.cloudflare.com/oauth2/oauth/revoke",
+                "logout_url": "https://dash.cloudflare.com/oauth2/oauth/revoke",
                 "redirect_uri": f"{origin}/oauth/sso-callback",
                 "token_url": "https://dash.cloudflare.com/oauth2/token",
                 "use_new_tab": False,
@@ -60,7 +60,7 @@ def _():
         # print("Environment: Local Python")
         origin = "https://auth.sandbox.marimo.app"
         oauth_config = {
-            "logout_url": f"https://dash.cloudflare.com/oauth2/revoke",
+            "logout_url": "https://dash.cloudflare.com/oauth2/revoke",
             "redirect_uri": f"{origin}/oauth/sso-callback",
             "token_url": "https://dash.cloudflare.com/oauth2/token",
             "proxy": "https://corsproxy.marimo.app",

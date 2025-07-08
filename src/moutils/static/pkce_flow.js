@@ -436,44 +436,48 @@ function render({ model, el }) {
 
   function handleUrlChange() {
     const url = window.location.href;
-    if (debug) console.log('[moutils:pkce_flow] Checking URL:', url);
+    const urlParams = new URLSearchParams(window.location.search);
+    let authCode = urlParams.get('code');
+    let state = urlParams.get('state');
 
-    // Check if we have a callback URL with code and state
-    if (url.includes('code=') && url.includes('state=')) {
-      if (debug) console.log('[moutils:pkce_flow] Found callback URL:', url);
+    // PATCH: If not in URL, check localStorage (for popup/new tab flows)
+    if ((!authCode || !state)) {
+      authCode = localStorage.getItem('__pkce_auth_code');
+      state = localStorage.getItem('__pkce_state');
+      if (authCode && state) {
+        if (debug) console.log('[moutils:pkce_flow] Found code/state in localStorage (popup flow)');
+      }
+    }
 
-      // Parse the URL to get the authorization code
-      const urlParams = new URLSearchParams(window.location.search);
-      const authCode = urlParams.get('code');
-      const state = urlParams.get('state');
-      
+    if (authCode && state) {
       if (debug) {
         console.log('[moutils:pkce_flow] Authorization code:', authCode ? authCode.substring(0, 20) + '...' : 'none');
         console.log('[moutils:pkce_flow] State:', state);
       }
 
       // Store the authorization code in localStorage as backup
-      if (authCode) {
-        localStorage.setItem('__pkce_auth_code', authCode);
-        if (debug) console.log('[moutils:pkce_flow] Stored auth code in localStorage');
-      }
+      localStorage.setItem('__pkce_auth_code', authCode);
+      localStorage.setItem('__pkce_state', state);
 
-      // Get the stored state and code verifier from localStorage
-      const storedState = localStorage.getItem('__pkce_state');
+      // Get the stored code verifier from localStorage
       const storedCodeVerifier = localStorage.getItem('__pkce_code_verifier');
       if (debug) {
-        console.log('[moutils:pkce_flow] Retrieved state from localStorage:', storedState);
         console.log('[moutils:pkce_flow] Retrieved code verifier from localStorage:', storedCodeVerifier);
       }
 
       // Set the callback URL and code verifier in the model to trigger Python processing
-      model.set('handle_callback', url);
+      // If code/state were from localStorage, synthesize a callback URL
+      let callbackUrl = url;
+      if (!url.includes('code=') && !url.includes('state=')) {
+        callbackUrl = window.location.pathname + '?code=' + encodeURIComponent(authCode) + '&state=' + encodeURIComponent(state);
+      }
+      model.set('handle_callback', callbackUrl);
       if (storedCodeVerifier) {
         model.set('code_verifier', storedCodeVerifier);
       }
       model.save_changes();
 
-      // Wait a moment for the Python side to process, then clear URL
+      // Wait a moment for the Python side to process, then clear URL/localStorage
       setTimeout(() => {
         // Clear the URL parameters to prevent re-processing
         const baseUrl = url.split('?')[0];
@@ -517,10 +521,6 @@ function render({ model, el }) {
         if (debug) {
           console.log('[moutils:pkce_flow] Revocation response:', response.status);
         }
-
-        if (!response.ok) {
-          console.error('[moutils:pkce_flow] Failed to revoke token:', response.status);
-        }
       } catch (error) {
         console.error('[moutils:pkce_flow] Error revoking token:', error);
       }
@@ -529,6 +529,10 @@ function render({ model, el }) {
     // Clear stored token data
     clearStoredOAuthToken();
     localStorage.removeItem('__pkce_token'); // Clear legacy token too
+    
+    // PATCH: Always set hostname after logout
+    model.set('hostname', window.location.hostname);
+    model.save_changes();
     
     // Set logout flag to trigger Python handler
     model.set('logout_requested', true);
@@ -576,7 +580,7 @@ function createPKCEFlowHTML(provider, providerName, clientId, icon) {
       <div id="initialSection" class="section">
         <div class="container">
           <div class="description">
-            You will be redirected to ${providerName}'s login page.
+            Redirect to ${providerName}'s login page
           </div>
           <button class="button" id="startAuthBtn">
             <span class="btn-text">Sign in with ${providerName}</span>
