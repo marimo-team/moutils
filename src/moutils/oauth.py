@@ -607,56 +607,75 @@ class DeviceFlow(anywidget.AnyWidget):
                 if self.debug:
                     self._log(f"Direct connection failed with {type(e).__name__}: {str(e)}")
                 
-                # If we have a proxy configured, try with proxy
-                if hasattr(self, 'proxy') and self.proxy:
+            # If we have a proxy configured, try with proxy
+            if hasattr(self, 'proxy') and self.proxy and self.proxy.strip():
+                if self.debug:
+                    self._log(f"Retrying with proxy: {self.proxy}")
+                try:
+                    # Format proxy URL properly
+                    if self.proxy.startswith(('http://', 'https://')):
+                        proxy_url = self.proxy
+                    else:
+                        # Assume HTTPS if no protocol specified
+                        proxy_url = f"https://{self.proxy}"
                     if self.debug:
-                        self._log(f"Retrying with proxy: {self.proxy}")
-                    
-                    try:
-                        # Format proxy URL properly
-                        if self.proxy.startswith(('http://', 'https://')):
-                            proxy_url = self.proxy
+                        self._log(f"Formatted proxy URL: {proxy_url}")
+                    if use_requests:
+                        # Use requests with proxy
+                        proxies = {'http': proxy_url, 'https': proxy_url}
+                        response = requests.request(
+                            method,
+                            url,
+                            data=data,
+                            headers=headers,
+                            proxies=proxies,
+                            timeout=30
+                        )
+                        # Parse response
+                        content_type = response.headers.get("Content-Type", "")
+                        if "application/json" in content_type:
+                            return response.json()
                         else:
-                            # Assume HTTPS if no protocol specified
-                            proxy_url = f"https://{self.proxy}"
-                        
-                        if self.debug:
-                            self._log(f"Formatted proxy URL: {proxy_url}")
-                        
+                            # Parse URL-encoded response
+                            response_text = response.text
+                            parsed_data = {}
+                            for pair in response_text.split("&"):
+                                if "=" in pair:
+                                    key, value = pair.split("=", 1)
+                                    parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                            return parsed_data
+                    else:
+                        # Use urllib with proxy
                         proxy_handler = urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url})
                         opener = urllib.request.build_opener(proxy_handler)
                         urllib.request.install_opener(opener)
-
-                        # Make request with proxy
+                        if method == "POST" and data:
+                            encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+                            req = urllib.request.Request(url, data=encoded_data, headers=headers)
+                        else:
+                            req = urllib.request.Request(url, headers=headers)
                         with urllib.request.urlopen(req) as response:
                             response_data = response.read().decode("utf-8")
-                            self._log("Token response received")
-
-                            # Parse response (could be JSON or URL-encoded)
+                            # Parse response
                             content_type = response.getheader("Content-Type", "")
                             if "application/json" in content_type:
-                                self._log("Parsing JSON token response")
                                 return json.loads(response_data)
                             else:
                                 # Parse URL-encoded response
-                                self._log("Parsing URL-encoded token response")
-                                parsed_data: OAuthResponseDict = {}
+                                parsed_data = {}
                                 for pair in response_data.split("&"):
                                     if "=" in pair:
                                         key, value = pair.split("=", 1)
-                                        parsed_data[urllib.parse.unquote(key)] = (
-                                            urllib.parse.unquote(value)
-                                        )
+                                        parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
                                 return parsed_data
-                                
-                    except Exception as proxy_error:
-                        if self.debug:
-                            self._log(f"Proxy connection also failed: {str(proxy_error)}")
-                        # If both direct and proxy fail, raise the original error
-                        raise error_to_retry
-                else:
-                    # No proxy configured, raise the original error
+                except Exception as proxy_error:
+                    if self.debug:
+                        self._log(f"Proxy connection also failed: {str(proxy_error)}")
+                    # If both direct and proxy fail, raise the original error
                     raise error_to_retry
+            else:
+                # No proxy configured, raise the original error
+                raise error_to_retry
 
         except urllib.error.HTTPError as e:
             self._log(f"HTTP error in token request: {e.code} {e.reason}")
@@ -1241,13 +1260,80 @@ class PKCEFlow(anywidget.AnyWidget):
         if self.debug:
             self._log(f"Making {method} request to {url} with fallback")
         
-        # First attempt: Try direct connection (no proxy)
+        # If we have a proxy configured, try with proxy first
+        tried_proxy = False
+        error_to_retry = None
+        if hasattr(self, 'proxy') and self.proxy and self.proxy.strip():
+            if self.debug:
+                self._log(f"Trying proxy first: {self.proxy}")
+            try:
+                # Format proxy URL properly
+                if self.proxy.startswith(('http://', 'https://')):
+                    proxy_url = self.proxy
+                else:
+                    # Assume HTTPS if no protocol specified
+                    proxy_url = f"https://{self.proxy}"
+                if self.debug:
+                    self._log(f"Formatted proxy URL: {proxy_url}")
+                if use_requests:
+                    # Use requests with proxy
+                    proxies = {'http': proxy_url, 'https': proxy_url}
+                    response = requests.request(
+                        method,
+                        url,
+                        data=data,
+                        headers=headers,
+                        proxies=proxies,
+                        timeout=30
+                    )
+                    # Parse response
+                    content_type = response.headers.get("Content-Type", "")
+                    if "application/json" in content_type:
+                        return response.json()
+                    else:
+                        # Parse URL-encoded response
+                        response_text = response.text
+                        parsed_data = {}
+                        for pair in response_text.split("&"):
+                            if "=" in pair:
+                                key, value = pair.split("=", 1)
+                                parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                        return parsed_data
+                else:
+                    # Use urllib with proxy
+                    proxy_handler = urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url})
+                    opener = urllib.request.build_opener(proxy_handler)
+                    urllib.request.install_opener(opener)
+                    if method == "POST" and data:
+                        encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+                        req = urllib.request.Request(url, data=encoded_data, headers=headers)
+                    else:
+                        req = urllib.request.Request(url, headers=headers)
+                    with urllib.request.urlopen(req) as response:
+                        response_data = response.read().decode("utf-8")
+                        # Parse response
+                        content_type = response.getheader("Content-Type", "")
+                        if "application/json" in content_type:
+                            return json.loads(response_data)
+                        else:
+                            # Parse URL-encoded response
+                            parsed_data = {}
+                            for pair in response_data.split("&"):
+                                if "=" in pair:
+                                    key, value = pair.split("=", 1)
+                                    parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                            return parsed_data
+            except Exception as proxy_error:
+                tried_proxy = True
+                error_to_retry = proxy_error
+                if self.debug:
+                    self._log(f"Proxy connection failed: {str(proxy_error)}. Falling back to direct connection.")
+
+        # Try direct connection (no proxy) if proxy is not set or failed
         try:
             if self.debug:
-                self._log("Attempting direct connection")
-            
+                self._log("Attempting direct connection (no proxy)")
             if use_requests:
-                # Use requests library
                 response = requests.request(
                     method,
                     url,
@@ -1256,13 +1342,10 @@ class PKCEFlow(anywidget.AnyWidget):
                     proxies=None,  # No proxy for direct connection
                     timeout=30
                 )
-                
-                # Parse response
                 content_type = response.headers.get("Content-Type", "")
                 if "application/json" in content_type:
                     return response.json()
                 else:
-                    # Parse URL-encoded response
                     response_text = response.text
                     parsed_data = {}
                     for pair in response_text.split("&"):
@@ -1271,113 +1354,32 @@ class PKCEFlow(anywidget.AnyWidget):
                             parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
                     return parsed_data
             else:
-                # Use urllib
                 if method == "POST" and data:
                     encoded_data = urllib.parse.urlencode(data).encode("utf-8")
                     req = urllib.request.Request(url, data=encoded_data, headers=headers)
                 else:
                     req = urllib.request.Request(url, headers=headers)
-                
                 with urllib.request.urlopen(req) as response:
                     response_data = response.read().decode("utf-8")
-                    
-                    # Parse response
                     content_type = response.getheader("Content-Type", "")
                     if "application/json" in content_type:
                         return json.loads(response_data)
                     else:
-                        # Parse URL-encoded response
                         parsed_data = {}
                         for pair in response_data.split("&"):
                             if "=" in pair:
                                 key, value = pair.split("=", 1)
                                 parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
                         return parsed_data
-                
-        except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError, 
-                requests.exceptions.SSLError, urllib.error.URLError, ConnectionError, OSError) as e:
-            # These errors suggest network/proxy issues that might be resolved with a proxy
-            error_to_retry = e
-            if self.debug:
-                self._log(f"Direct connection failed with {type(e).__name__}: {str(e)}")
-            
-            # If we have a proxy configured, try with proxy
-            if hasattr(self, 'proxy') and self.proxy:
+        except Exception as direct_error:
+            if tried_proxy:
                 if self.debug:
-                    self._log(f"Retrying with proxy: {self.proxy}")
-                
-                try:
-                    # Format proxy URL properly
-                    if self.proxy.startswith(('http://', 'https://')):
-                        proxy_url = self.proxy
-                    else:
-                        # Assume HTTPS if no protocol specified
-                        proxy_url = f"https://{self.proxy}"
-                    
-                    if self.debug:
-                        self._log(f"Formatted proxy URL: {proxy_url}")
-                    
-                    if use_requests:
-                        # Use requests with proxy
-                        proxies = {'http': proxy_url, 'https': proxy_url}
-                        response = requests.request(
-                            method,
-                            url,
-                            data=data,
-                            headers=headers,
-                            proxies=proxies,
-                            timeout=30
-                        )
-                        
-                        # Parse response
-                        content_type = response.headers.get("Content-Type", "")
-                        if "application/json" in content_type:
-                            return response.json()
-                        else:
-                            # Parse URL-encoded response
-                            response_text = response.text
-                            parsed_data = {}
-                            for pair in response_text.split("&"):
-                                if "=" in pair:
-                                    key, value = pair.split("=", 1)
-                                    parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
-                            return parsed_data
-                    else:
-                        # Use urllib with proxy
-                        proxy_handler = urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url})
-                        opener = urllib.request.build_opener(proxy_handler)
-                        urllib.request.install_opener(opener)
-                        
-                        if method == "POST" and data:
-                            encoded_data = urllib.parse.urlencode(data).encode("utf-8")
-                            req = urllib.request.Request(url, data=encoded_data, headers=headers)
-                        else:
-                            req = urllib.request.Request(url, headers=headers)
-                        
-                        with urllib.request.urlopen(req) as response:
-                            response_data = response.read().decode("utf-8")
-                            
-                            # Parse response
-                            content_type = response.getheader("Content-Type", "")
-                            if "application/json" in content_type:
-                                return json.loads(response_data)
-                            else:
-                                # Parse URL-encoded response
-                                parsed_data = {}
-                                for pair in response_data.split("&"):
-                                    if "=" in pair:
-                                        key, value = pair.split("=", 1)
-                                        parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
-                                return parsed_data
-                            
-                except Exception as proxy_error:
-                    if self.debug:
-                        self._log(f"Proxy connection also failed: {str(proxy_error)}")
-                    # If both direct and proxy fail, raise the original error
-                    raise error_to_retry
-            else:
-                # No proxy configured, raise the original error
+                    self._log(f"Both proxy and direct connection failed. Raising proxy error: {str(error_to_retry)}")
                 raise error_to_retry
+            else:
+                if self.debug:
+                    self._log(f"Direct connection failed: {str(direct_error)}")
+                raise direct_error
 
     def _exchange_code_for_token(self) -> Dict[str, Any]:
         """Exchange the authorization code for tokens."""

@@ -21,6 +21,7 @@ endif
 
 .PHONY: all
 all: makeinfo venv ## all: Ensure virtual environment is ready and show basic instructions
+	@printf '\n==> Run "source .venv/bin/activate" to activate the virtual environment.\n'
 	@printf '\n==> Run "make edit" to start a local notebook server.\n'
 	@printf '==> Run "make export" to generate the WASM notebooks.\n'
 	@printf '==> Run "make preview" to serve the WASM notebooks.\n'
@@ -49,14 +50,24 @@ lint: makeinfo $(PYTHON_VENV) node_modules ## lint: Run Python and JavaScript li
 
 .PHONY: html-wasm-clean
 html-wasm-clean: makeinfo # html-wasm-clean: Remove exported HTML/WASM directory
-	rm -rf "$(NB_EXPORT_DIR)"
+	rm -rf $(NB_EXPORT_DIR)
+	rm -rf $(NB_SOURCE_DIR)
+	rm -rf 
 	mkdir -p $(NB_EXPORT_DIR)
-	mkdir -p notebooks
-	cp -r ../../notebooks/* notebooks/
-	mkdir -p notebooks/public
-	cp -r public/* notebooks/public/
+	mkdir -p $(NB_SOURCE_DIR)
+	cp -r ../../$(NB_SOURCE_DIR)/* $(NB_SOURCE_DIR)/
+	mkdir -p $(NB_SOURCE_DIR)/public
+	cp -r public/* $(NB_SOURCE_DIR)/public/
+	@echo "🛞 Copying wheel file to export directory..."
+	@if [ -f "public/$(WHEEL_BASENAME)" ]; then \
+		cp public/$(WHEEL_BASENAME) $(INDEX_DIR)/; \
+		echo "✅ Wheel file copied to $(INDEX_DIR)/$(WHEEL_BASENAME)"; \
+	else \
+		echo "⚠️  Warning: public/$(WHEEL_BASENAME) not found"; \
+	fi
+	@echo $(WHEEL_BASENAME) > $(INDEX_DIR)/WHEEL_FILENAME.txt
 	@echo "🔧 Injecting micropip installation into notebooks..."
-	@for notebook in notebooks/*.py; do \
+	@for notebook in $(NB_SOURCE_DIR)/*.py; do \
 		if [ -f "$$notebook" ]; then \
 			$(PYTHON_CMD) scripts/inject_micropip.py "$$notebook"; \
 		fi \
@@ -88,6 +99,7 @@ HAVE_BUILD := $(shell $(PYTHON_BUILD) -m pip show build >/dev/null 2>&1 && echo 
 
 # Find the latest built wheel
 WHEEL_FILE := $(shell ls -t ../../dist/moutils-*.whl 2>/dev/null | head -1)
+WHEEL_BASENAME := $(shell basename $(WHEEL_FILE))
 
 .PHONY: wheel
 wheel:
@@ -97,7 +109,7 @@ ifeq ($(HAVE_BUILD),no)
 endif
 	cd ../../ && $(PYTHON_BUILD) -m build --wheel
 	@echo "Latest wheel: $(WHEEL_FILE)"
-	@cp $(WHEEL_FILE) public/moutils-latest.whl
+	@cp $(WHEEL_FILE) public/
 
 # html-wasm: Full build of HTML/WASM notebooks including linting and index
 .PHONY: html-wasm
