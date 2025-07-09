@@ -446,6 +446,34 @@ function render({ model, el }) {
     }
   };
   
+  // Enhanced fallback for WASM environments: Listen for storage events
+  const handleStorageEvent = (event) => {
+    if (debug) console.log('[moutils:pkce_flow] Storage event detected:', event.key);
+    
+    if (event.key === '__pkce_auth_code' || event.key === '__pkce_state') {
+      if (debug) console.log('[moutils:pkce_flow] OAuth data storage event detected');
+      
+      // Small delay to ensure both code and state are stored
+      setTimeout(() => {
+        const code = localStorage.getItem('__pkce_auth_code');
+        const state = localStorage.getItem('__pkce_state');
+        
+        if (code && state && model.get('status') === 'pending') {
+          if (debug) console.log('[moutils:pkce_flow] Processing OAuth callback from storage event');
+          
+          // Trigger URL change to process the callback
+          const currentUrl = window.location.pathname;
+          const newUrl = currentUrl + '?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state);
+          window.history.pushState({}, '', newUrl);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      }, 100);
+    }
+  };
+  
+  // Add storage event listener for cross-window communication
+  window.addEventListener('storage', handleStorageEvent);
+  
   // Check every 1 second for auth code (only while in pending state)
   if (debug) console.log('[moutils:pkce_flow] Starting periodic auth code check (every 1000ms)');
   const authCodeInterval = setInterval(() => {
@@ -478,12 +506,21 @@ function render({ model, el }) {
     let authCode = urlParams.get('code');
     let state = urlParams.get('state');
 
+    if (debug) {
+      console.log('[moutils:pkce_flow] handleUrlChange called');
+      console.log('[moutils:pkce_flow] URL:', url);
+      console.log('[moutils:pkce_flow] URL params - code:', authCode ? authCode.substring(0, 20) + '...' : 'none');
+      console.log('[moutils:pkce_flow] URL params - state:', state ? state.substring(0, 20) + '...' : 'none');
+    }
+
     // PATCH: If not in URL, check localStorage (for popup/new tab flows)
     if ((!authCode || !state)) {
       authCode = localStorage.getItem('__pkce_auth_code');
       state = localStorage.getItem('__pkce_state');
       if (authCode && state) {
         if (debug) console.log('[moutils:pkce_flow] Found code/state in localStorage (popup flow)');
+        if (debug) console.log('[moutils:pkce_flow] localStorage code:', authCode.substring(0, 20) + '...');
+        if (debug) console.log('[moutils:pkce_flow] localStorage state:', state.substring(0, 20) + '...');
       }
     }
 
@@ -500,7 +537,7 @@ function render({ model, el }) {
       // Get the stored code verifier from localStorage
       const storedCodeVerifier = localStorage.getItem('__pkce_code_verifier');
       if (debug) {
-        console.log('[moutils:pkce_flow] Retrieved code verifier from localStorage:', storedCodeVerifier);
+        console.log('[moutils:pkce_flow] Retrieved code verifier from localStorage:', storedCodeVerifier ? storedCodeVerifier.substring(0, 20) + '...' : 'none');
       }
 
       // Set the callback URL and code verifier in the model to trigger Python processing
@@ -508,6 +545,7 @@ function render({ model, el }) {
       let callbackUrl = url;
       if (!url.includes('code=') && !url.includes('state=')) {
         callbackUrl = window.location.pathname + '?code=' + encodeURIComponent(authCode) + '&state=' + encodeURIComponent(state);
+        if (debug) console.log('[moutils:pkce_flow] Synthesized callback URL:', callbackUrl);
       }
       
       if (debug) console.log('[moutils:pkce_flow] Setting handle_callback to:', callbackUrl);
@@ -538,6 +576,13 @@ function render({ model, el }) {
           // Set the auth code directly in the model
           model.set('authorization_code', authCode);
           model.save_changes();
+          
+          // Wait another moment and check again
+          setTimeout(() => {
+            const finalStatus = model.get('status');
+            const finalToken = model.get('access_token');
+            if (debug) console.log('[moutils:pkce_flow] After fallback - status:', finalStatus, 'token:', finalToken ? finalToken.substring(0, 20) + '...' : 'none');
+          }, 1000);
         }
         
         // Clear the URL parameters to prevent re-processing
@@ -551,6 +596,8 @@ function render({ model, el }) {
         localStorage.removeItem('__pkce_auth_code');
         if (debug) console.log('[moutils:pkce_flow] Cleared localStorage items');
       }, 1000); // Wait 1 second for Python processing
+    } else {
+      if (debug) console.log('[moutils:pkce_flow] No auth code or state found in URL or localStorage');
     }
   }
 
@@ -625,6 +672,31 @@ function initialize({ model }) {
   model.set('port', port);
   model.set('href', href);
   model.save_changes();
+  
+  // Check for OAuth callbacks immediately on initialization (for WASM environments)
+  setTimeout(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    const state = urlParams.get('state');
+    
+    if (code && state) {
+      if (debug) console.log('[moutils:pkce_flow] Found OAuth callback on initialization');
+      // Trigger URL change handling
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    } else {
+      // Check localStorage for OAuth data (for popup flows)
+      const storedCode = localStorage.getItem('__pkce_auth_code');
+      const storedState = localStorage.getItem('__pkce_state');
+      
+      if (storedCode && storedState) {
+        if (debug) console.log('[moutils:pkce_flow] Found OAuth data in localStorage on initialization');
+        // Trigger URL change handling with synthesized URL
+        const newUrl = window.location.pathname + '?code=' + encodeURIComponent(storedCode) + '&state=' + encodeURIComponent(storedState);
+        window.history.pushState({}, '', newUrl);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
+  }, 100); // Small delay to ensure model is fully initialized
 }
 
 /**

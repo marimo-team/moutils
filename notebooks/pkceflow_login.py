@@ -11,7 +11,7 @@
 
 import marimo
 
-__generated_with = "0.11.26"
+__generated_with = "0.14.10"
 app = marimo.App(
     width="full",
     app_title="PKCE Login Notebook",
@@ -50,15 +50,15 @@ def _():
         if "localhost:8088" in origin:
             if debug: print("[DEBUG] Environment: Local WASM with Cloudflare Pages")
             oauth_config = {
-                "logout_url": f"{origin}/oauth/revoke",
+                "logout_url": f"{origin}/oauth2/revoke",
                 "redirect_uri": f"{origin}/oauth/callback",
-                "token_url": f"{origin}/oauth/token",
+                "token_url": f"{origin}/oauth2/token",
                 "use_new_tab": True,
             }
         elif "localhost" in origin:
             if debug: print("[DEBUG] Environment: Local WASM (standard)")
             oauth_config = {
-                "logout_url": "https://dash.cloudflare.com/oauth2/oauth/revoke",
+                "logout_url": "https://dash.cloudflare.com/oauth2/revoke",
                 "redirect_uri": "https://auth.sandbox.marimo.app/oauth/sso-callback",
                 "token_url": "https://dash.cloudflare.com/oauth2/token",
                 "use_new_tab": False,
@@ -66,9 +66,9 @@ def _():
         else:
             if debug: print("[DEBUG] Environment: Production WASM")
             oauth_config = {
-                "logout_url": f"{origin}/oauth/revoke",
+                "logout_url": f"{origin}/oauth2/revoke",
                 "redirect_uri": f"{origin}/oauth/callback",
-                "token_url": f"{origin}/oauth/token",
+                "token_url": f"{origin}/oauth2/token",
                 "use_new_tab": True,
             }
     except AttributeError:
@@ -96,13 +96,13 @@ def _():
             print("Please login using the button above")
             return []
         
-        # Use the actual Cloudflare API endpoint, not the proxy
-        request_url = "https://api.cloudflare.com/client/v4/accounts"
+        # Use the proxy for API calls in WASM environment to avoid CORS issues
+        request_url = f"{proxy}/client/v4/accounts"
         headers = {"Authorization": f"Bearer {token}"}
         if debug:
             print("[DEBUG] get_accounts request URL:", request_url)
             print("[DEBUG] get_accounts headers:", headers)
-            print("[DEBUG] get_accounts token (first 40 chars):", token[:40])
+            print("[DEBUG] get_accounts token (first 40 chars):", token[:40] + "..." if token else "None")
         from urllib.error import HTTPError
 
         try:
@@ -144,7 +144,7 @@ def _(debug, oauth_config, PKCEFlow):
 @app.cell(hide_code=True)
 async def _(debug, df, get_accounts, mo):
     # Login Stub - click to view code
-    if debug: print(f"[DEBUG] Access token (truncated to 20 chars): {df.access_token[:20]}...")
+    if debug: print(f"[DEBUG] Access token (truncated to 20 chars): {df.access_token[:20] + '...' if df.access_token else 'None'}")
     accounts = await get_accounts(debug, df.access_token)
     radio = mo.ui.radio(options=[a["name"] for a in accounts], label="Select Account")
     return accounts, radio
@@ -152,7 +152,7 @@ async def _(debug, df, get_accounts, mo):
 
 @app.cell(hide_code=True)
 def _(accounts, df, mo, radio):
-    # SELECT ACCOUNT CELL - click to view code
+    # Select Account Stub - click to view code
     account_name = radio.value if radio.value else None
     account_id = (
         next((a["id"] for a in accounts if a["name"] == account_name), None)
@@ -165,9 +165,9 @@ def _(accounts, df, mo, radio):
             mo.md(
                 "Variables"
                 "<pre>"
-                f"account_id:      {account_id[:20] if account_id else 'None'}...\n"
-                f"account_name:    {account_name[:20] if account_name else 'None'}...\n"
-                f"df.access_token: {df.access_token[:20] if df.access_token else 'None'}...\n"
+                f"account_id:      {account_id[:20] + '...' if account_id else 'None'}\n"
+                f"account_name:    {account_name if account_name else 'None'}\n"
+                f"df.access_token: {df.access_token[:20] + '...' if df.access_token else 'None'}\n"
                 "</pre>"
             ),
         ]
@@ -181,9 +181,9 @@ def _(accounts, df, mo, radio):
 @app.cell
 def _(account_id, account_name, df):
     print("Hello, World! 🌎")
-    print(f"Cloudflare API Token:    {df.access_token[:20] if df.access_token else 'None'}...")
-    print(f"Cloudflare Account ID:   {account_id[:20] if account_id else 'None'}...")
-    print(f"Cloudflare Account Name: {account_name if account_id else 'None...'}")
+    print(f"Cloudflare API Token:    {df.access_token[:20] + '...' if df.access_token else 'None'}")
+    print(f"Cloudflare Account ID:   {account_id[:20] + '...' if account_id else 'None'}")
+    print(f"Cloudflare Account Name: {account_name if account_name else 'None'}")
     return
 
 
