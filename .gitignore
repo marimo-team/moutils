@@ -16,3 +16,4 @@ demos/cloudflare/notebooks
 demos/cloudflare/.wrangler
 *.whl
 .tree-output.txt
+WHEEL_FILENAME.txt

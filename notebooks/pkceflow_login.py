@@ -14,7 +14,7 @@ import marimo
 __generated_with = "0.11.26"
 app = marimo.App(
     width="full",
-    app_title="Cloudflare Notebook",
+    app_title="PKCE Login Notebook",
     auto_download=["ipynb", "html"],
 )
 
@@ -35,7 +35,7 @@ def _():
     from moutils.oauth import PKCEFlow
     from urllib.request import Request, urlopen
 
-    debug = False
+    debug = True
     warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
     warnings.filterwarnings("ignore", category=UserWarning, module="fanstatic")
     proxy = "https://api-proxy.notebooks.cloudflare.com"

@@ -10,12 +10,27 @@ from pathlib import Path
 def inject_micropip_install(notebook_path):
     """Inject micropip installation code into a marimo notebook."""
     
+    # Read the wheel filename from export/WHEEL_FILENAME.txt
+    wheel_filename_path = Path(__file__).parent.parent / "export" / "WHEEL_FILENAME.txt"
+    if not wheel_filename_path.exists():
+        print(f"Error: {wheel_filename_path} does not exist. Run make export first.")
+        sys.exit(1)
+    with open(wheel_filename_path, 'r') as f:
+        wheel_filename = f.read().strip()
+    wheel_url = f"http://localhost:8088/{wheel_filename}"
+    
     # Read the micropip installation code
     script_dir = Path(__file__).parent
     micropip_script = script_dir / "install_local_moutils.py"
     
     with open(micropip_script, 'r') as f:
         micropip_code = f.read().rstrip()
+    
+    # Replace the install URL in the micropip code
+    micropip_code = micropip_code.replace(
+        'await micropip.install("http://localhost:8088/moutils-latest.whl")',
+        f'await micropip.install("{wheel_url}")'
+    )
     
     # Read the notebook
     with open(notebook_path, 'r') as f:

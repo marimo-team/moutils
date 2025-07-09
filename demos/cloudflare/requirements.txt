@@ -1,18 +1,12 @@
--e ../../ # moutils local
 altair==5.5.0
 anywidget==0.9.18
 cerberus==1.3.7
 flake8==7.2.0
-<<<<<<< Updated upstream
-marimo==0.14.10
--e ../../
-=======
 ipython==9.1.0
 jinja2==3.1.6
 js==1.0
-marimo==0.14.7
+marimo==0.14.10
 nbformat==5.10.4
->>>>>>> Stashed changes
 pandas==2.2.3
 polars==1.27.1
 pyyaml==6.0.2

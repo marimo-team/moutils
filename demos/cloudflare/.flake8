@@ -5,7 +5,9 @@ max-line-length = 120
 # E127: visual indentation (aligment of function parameters)
 # E226: whitespace around arithmetic operators (sometimes hurts readability)
 # W503: line break before binary operator (conflicts with W504: line break after binary operator)
-ignore = E731, E127, E226, W503
+# E501: line too long (80 characters)
+# E701: multiple statements on one line (colon)
+ignore = E731, E127, E226, W503, E501, E701
 
 exclude =
     */.git/*
