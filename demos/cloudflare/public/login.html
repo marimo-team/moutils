@@ -25,8 +25,12 @@
         margin: 20px auto;
       }
       @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
       }
     </style>
   </head>
@@ -42,76 +46,48 @@
         var params = new URLSearchParams(window.location.search);
         var code = params.get("code");
         var state = params.get("state");
-        
+
         if (code && state) {
           try {
             // Decode the state parameter (base64url encoded)
-            var decodedState = atob(state.replace(/-/g, '+').replace(/_/g, '/'));
+            var decodedState = atob(
+              state.replace(/-/g, "+").replace(/_/g, "/")
+            );
             var stateData = JSON.parse(decodedState);
 
             // Extract the href from the state
             var redirectUrl = new URL(stateData.href);
-            
+
             // Add all current query parameters to the redirect URL
             for (var [key, value] of params.entries()) {
               redirectUrl.searchParams.set(key, value);
             }
+
+            // Store the OAuth data in localStorage and close the popup
+            console.log("Storing OAuth data in localStorage...");
+            localStorage.setItem("__pkce_auth_code", code);
+            localStorage.setItem("__pkce_state", state);
             
-            // if opened in a new tab (popup), notify parent and close using localStorage
-            window.DEBUG_OAUTH_PAUSE=true;
-            var debugPause = window.DEBUG_OAUTH_PAUSE === true;
-            if (window.opener && window.opener !== window) {
-              try {
-                // Store the OAuth data in the format that PKCEFlow expects
-                localStorage.setItem('__pkce_auth_code', code);
-                localStorage.setItem('__pkce_state', state);
-                
-                // Also store all params for completeness
-                for (var [key, value] of params.entries()) {
-                  localStorage.setItem('__pkce_' + key, value);
-                }
-                
-                if (debugPause) {
-                  document.getElementById("content").innerHTML =
-                    "<div class='spinner'></div><div class='message'>Login successful! This tab will close in 3 seconds...</div>";
-                  setTimeout(function() {
-                    window.close();
-                  }, 3000);
-                } else {
-                  window.close();
-                }
-              } catch (e) {
-                // Fallback to redirect if localStorage or close fails
-                if (debugPause) {
-                  document.getElementById("content").innerHTML =
-                    "<div class='spinner'></div><div class='message'>Login successful! Redirecting in 3 seconds...</div>";
-                  setTimeout(function() {
-                    window.location.href = redirectUrl.toString();
-                  }, 3000);
-                } else {
-                  window.location.href = redirectUrl.toString();
-                }
-              }
-            } else {
-              // Not a popup/new tab, do the redirect as before
-              if (debugPause) {
-                document.getElementById("content").innerHTML =
-                  "<div class='spinner'></div><div class='message'>Login successful! Redirecting in 3 seconds...</div>";
-                setTimeout(function() {
-                  window.location.href = redirectUrl.toString();
-                }, 3000);
-              } else {
-                window.location.href = redirectUrl.toString();
-              }
+            // Also store all params for completeness
+            for (var [key, value] of params.entries()) {
+              localStorage.setItem("__pkce_" + key, value);
             }
             
+            console.log("OAuth data stored, closing popup in 3 seconds...");
+            document.getElementById("content").innerHTML =
+              "<div class='spinner'></div><div class='message'>Login successful! This tab will close in 3 seconds...</div>";
+            setTimeout(function () {
+              window.close();
+            }, 3000);
           } catch (error) {
             console.error("Error processing state parameter:", error);
-            document.getElementById("content").innerHTML = 
-              "<div class='message'>Error processing callback: " + error.message + "</div>";
+            document.getElementById("content").innerHTML =
+              "<div class='message'>Error processing callback: " +
+              error.message +
+              "</div>";
           }
         } else {
-          document.getElementById("content").innerHTML = 
+          document.getElementById("content").innerHTML =
             "<div class='message'>Invalid callback parameters</div>";
         }
       } else {
@@ -123,21 +99,6 @@
           window.location.href = window.top.location.origin;
         }
       }
-
-      // Handle storage events for popup-based login
-      window.addEventListener("storage", function (e) {
-        // Check if PKCEFlow auth code was stored (indicating OAuth callback completed)
-        if (e.key === '__pkce_auth_code' && e.newValue) {
-          console.log("OAuth callback completed, auth code stored:", e.newValue.substring(0, 20) + '...');
-          // Get code and state from localStorage
-          var code = localStorage.getItem('__pkce_auth_code');
-          var state = localStorage.getItem('__pkce_state');
-          if (code && state) {
-            window.history.pushState({}, '', window.location.pathname + '?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state));
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }
-        }
-      });
     </script>
   </body>
 </html>
