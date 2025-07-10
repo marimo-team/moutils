@@ -7,7 +7,8 @@ max-line-length = 120
 # W503: line break before binary operator (conflicts with W504: line break after binary operator)
 # E501: line too long (80 characters)
 # E701: multiple statements on one line (colon)
-ignore = E731, E127, E226, W503, E501, E701
+# E401: imported but unused
+ignore = E731, E127, E226, W503, E501, E701, F401
 
 exclude =
     */.git/*

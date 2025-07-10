@@ -85,6 +85,15 @@ def inject_micropip_install(notebook_path):
     
     # Insert the micropip cell before the next cell
     lines = lines[:next_cell_idx] + micropip_lines + lines[next_cell_idx:]
+
+    # Ensure exactly two blank lines after the injected cell
+    injected_end = next_cell_idx + len(micropip_lines) - 1
+    # Remove any blank lines immediately after the injected cell
+    while injected_end + 1 < len(lines) and lines[injected_end + 1].strip() == "":
+        lines.pop(injected_end + 1)
+    # Insert two blank lines
+    lines.insert(injected_end + 1, "")
+    lines.insert(injected_end + 2, "")
     
     # Now modify any cells that import moutils to depend on the installation
     i = 0

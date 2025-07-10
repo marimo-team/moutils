@@ -42,10 +42,12 @@ class OAuthResponseDict(TypedDict, total=False):
 DEFAULTS_FOR_PROVIDER = {
     "cloudflare": {
         "provider_name": "Cloudflare",
+        "client_id": "ec85d9cd-ff12-4d96-a376-432dbcf0bbfc",
         "token_url": "https://dash.cloudflare.com/oauth2/token",
         "authorization_url": "https://dash.cloudflare.com/oauth2/auth",
         "logout_url": "https://dash.cloudflare.com/oauth2/revoke",
         "scopes": "notebook-examples:read",
+        "proxy": "https://api-proxy.notebooks.cloudflare.com",
     },
     "github": {
         "provider_name": "GitHub",
@@ -811,7 +813,7 @@ class PKCEFlow(anywidget.AnyWidget):
         self,
         *,
         provider: str,
-        client_id: str,
+        client_id: Optional[str] = None,
         provider_name: Optional[str] = None,
         authorization_url: Optional[str] = None,
         token_url: Optional[str] = None,
@@ -829,7 +831,7 @@ class PKCEFlow(anywidget.AnyWidget):
 
         Args:
             provider: OAuth provider identifier (e.g., "github", "microsoft")
-            client_id: OAuth client ID
+            client_id: OAuth client ID (optional, will use provider default if not provided)
             provider_name: Display name for the provider (defaults to capitalized provider)
             authorization_url: URL to start the authorization flow
             token_url: URL to exchange code for token
@@ -857,6 +859,12 @@ class PKCEFlow(anywidget.AnyWidget):
             },
         )
 
+        # Set default client_id from provider defaults if not provided
+        if not client_id:
+            client_id = default_options.get("client_id", "")
+        if not client_id:
+            raise ValueError(f"Client ID is required for provider: {provider}")
+
         # Set OAuth endpoint URLs
         if not authorization_url:
             authorization_url = default_options.get("authorization_url", "")
@@ -882,6 +890,10 @@ class PKCEFlow(anywidget.AnyWidget):
         if not redirect_uri:
             redirect_uri = "http://localhost:2718/oauth/callback"
 
+        # Set default proxy from provider defaults if not provided
+        if not proxy:
+            proxy = default_options.get("proxy", "")
+
         # Store callbacks
         self.on_success = on_success
         self.on_error = on_error
@@ -906,13 +918,56 @@ class PKCEFlow(anywidget.AnyWidget):
             scopes=scopes,
             logout_url=logout_url,
             proxy=proxy or "",
-            use_new_tab=use_new_tab,
+            use_new_tab=use_new_tab if use_new_tab is not None else True,
         )
+        
+        # Configure environment-specific URLs for Cloudflare
+        self._configure_cloudflare_urls()
 
     def _log(self, message: str) -> None:
         """Log a message."""
         if self.debug:
             print(f"[moutils:oauth] {message}")
+
+    def _configure_cloudflare_urls(self) -> None:
+        """Configure Cloudflare URLs based on environment detection."""
+        if self.provider != "cloudflare":
+            return
+            
+        self._log("Configuring Cloudflare URLs based on environment")
+        
+        # Try to detect WASM environment
+        try:
+            import js
+            origin = js.eval("self.location?.origin")
+            self._log(f"WASM environment detected - origin: {origin}")
+            
+            if "localhost:8088" in origin:
+                self._log("Environment: Local WASM with Cloudflare Pages")
+                self.logout_url = f"{origin}/oauth2/revoke"
+                self.redirect_uri = f"{origin}/oauth/callback"
+                self.token_url = f"{origin}/oauth2/token"
+                self.use_new_tab = True
+            elif "localhost" in origin:
+                self._log("Environment: Local WASM (standard)")
+                # Use direct Cloudflare URLs for standard localhost
+                self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
+                self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                self.token_url = "https://dash.cloudflare.com/oauth2/token"
+                self.use_new_tab = False
+            else:
+                self._log("Environment: Production WASM")
+                self.logout_url = f"{origin}/oauth2/revoke"
+                self.redirect_uri = f"{origin}/oauth/callback"
+                self.token_url = f"{origin}/oauth2/token"
+                self.use_new_tab = True
+        except (AttributeError, NameError):
+            self._log("Environment: Local Python")
+            # Use direct Cloudflare URLs for local Python
+            self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
+            self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
+            self.token_url = "https://dash.cloudflare.com/oauth2/token"
+            self.use_new_tab = False
 
     def _generate_code_verifier(self) -> str:
         """Generate a code verifier for PKCE."""
