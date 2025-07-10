@@ -56,11 +56,16 @@
             var stateData = JSON.parse(decodedState);
 
             // Extract the href from the state
-            var redirectUrl = new URL(stateData.href);
-
-            // Add all current query parameters to the redirect URL
-            for (var [key, value] of params.entries()) {
-              redirectUrl.searchParams.set(key, value);
+            var redirectUrl;
+            if (stateData.href && stateData.href.trim() !== "") {
+              redirectUrl = new URL(stateData.href);
+              // Add all current query parameters to the redirect URL
+              for (var [key, value] of params.entries()) {
+                redirectUrl.searchParams.set(key, value);
+              }
+            } else {
+              // If no href, just use the current origin
+              redirectUrl = new URL(window.location.origin);
             }
 
             // Store the OAuth data in localStorage and close the popup
