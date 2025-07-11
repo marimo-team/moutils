@@ -748,4 +748,39 @@ function createPKCEFlowHTML(provider, providerName, clientId, icon) {
   `;
 }
 
+// Reconnect hook for local python PKCE flow
+if (typeof window !== "undefined" && !window.__moutils_reconnect_hooked) {
+  window.__moutils_reconnect_hooked = true;
+
+  const observer = new MutationObserver(() => {
+    const reconnectText = Array.from(document.querySelectorAll("span"))
+      .find(span => span.textContent.trim() === "Reconnected");
+
+    const restartButton = document.querySelector('[data-testid="restart-session-button"]');
+
+    if (reconnectText && restartButton && !window.__moutils_restart_clicked) {
+      console.log("[moutils:pkce_flow] Reconnected detected. Clicking restart button...");
+      window.__moutils_restart_clicked = true;
+      restartButton.click();
+
+      // Now wait for the confirmation dialog
+      const confirmInterval = setInterval(() => {
+        const confirmButton = document.querySelector(
+          'button[aria-label="Confirm Restart"]'
+        );
+        if (confirmButton) {
+          console.log("[moutils:pkce_flow] Confirm dialog found. Clicking Restart...");
+          confirmButton.click();
+          clearInterval(confirmInterval);
+        }
+      }, 1000);
+
+      // Safety timeout after 5 seconds
+      setTimeout(() => clearInterval(confirmInterval), 5000);
+    }
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
 export default { render, initialize };
