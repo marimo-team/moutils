@@ -935,8 +935,6 @@ class PKCEFlow(anywidget.AnyWidget):
             return
             
         self._log("Configuring Cloudflare URLs based on environment")
-        
-        # Try to detect WASM environment
         try:
             import js
             origin = js.eval("self.location?.origin")
@@ -961,7 +959,7 @@ class PKCEFlow(anywidget.AnyWidget):
                 self.redirect_uri = f"{origin}/oauth/callback"
                 self.token_url = f"{origin}/oauth2/token"
                 self.use_new_tab = True
-        except (AttributeError, NameError):
+        except (AttributeError, ModuleNotFoundError, NameError):
             self._log("Environment: Local Python")
             # Use direct Cloudflare URLs for local Python
             self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
@@ -1133,7 +1131,6 @@ class PKCEFlow(anywidget.AnyWidget):
                 self.on_success(token_data)
             # Ensure we don't trigger another auth flow
             self.start_auth = False
-            # Store token data for persistence (this will be handled by JavaScript)
             self._store_token_for_persistence()
 
     def _store_token_for_persistence(self) -> None:
@@ -1265,7 +1262,6 @@ class PKCEFlow(anywidget.AnyWidget):
         """Reset the authentication state."""
         if self.debug:
             self._log(f"reset called. Current access_token={self.access_token}, status={self.status}")
-        # Store configuration properties that should persist
         hostname = self.hostname
         port = self.port
         href = self.href

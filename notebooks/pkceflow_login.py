@@ -2,7 +2,6 @@
 # requires-python = ">=3.13"
 # dependencies = [
 #     "anywidget",
-#     "js==1.0",
 #     "marimo",
 #     "nbformat",
 #     "requests==2.32.4",
@@ -51,8 +50,8 @@ def _():
             print("Token invalid - Please login using the button above")
             if debug: print("[DEBUG] Exception:", e)
             return []
+    return PKCEFlow, Request, debug, get_accounts, is_wasm, json, mo, moutils, proxy, requests, sys, urllib, urlopen, warnings
 
-    return PKCEFlow, Request, debug, get_accounts, json, mo, moutils, proxy, requests, urllib, urlopen, warnings
 
 
 @app.cell(hide_code=True)
