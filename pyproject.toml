@@ -3,7 +3,12 @@ build-backend = "hatchling.build"
 requires = ["hatchling"]
 
 [project]
-dependencies = ["anywidget"]
+dependencies = [
+    "anywidget",
+    "marimo>=0.11.26",
+    "pytest>=8.4.1",
+    "requests>=2.32.4",
+]
 name = "moutils"
 readme = "README.md"
 version = "0.3.10"

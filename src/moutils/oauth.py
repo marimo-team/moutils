@@ -312,11 +312,6 @@ class DeviceFlow(anywidget.AnyWidget):
         """Reset the authentication state."""
         if self.debug:
             self._log(f"reset called. Current access_token={self.access_token}, status={self.status}")
-        # Store configuration properties that should persist
-        hostname = self.hostname
-        port = self.port
-        href = self.href
-        proxy = self.proxy
         # Reset authentication state
         self.device_code = ""
         self.user_code = ""
@@ -328,11 +323,16 @@ class DeviceFlow(anywidget.AnyWidget):
         self.status = "not_started"
         self.error_message = ""
         self._expires_at = 0
-        # Restore configuration properties
-        self.hostname = hostname
-        self.port = port
-        self.href = href
-        self.proxy = proxy
+
+    def _store_token_for_persistence(self) -> None:
+        """Store token data in the widget for JavaScript persistence."""
+        if self.debug:
+            self._log("Storing token data for persistence")
+        
+        # For device flow, we don't have a token_expires_in attribute
+        # The token persistence is handled differently in device flow
+        # This method is called for compatibility with the token change handler
+        pass
 
     def start_device_flow(self) -> None:
         """Start the device flow authentication process."""
@@ -397,9 +397,11 @@ class DeviceFlow(anywidget.AnyWidget):
                 self.refresh_token = token_response.get("refresh_token", "")
 
                 # Store additional response data
-                self.refresh_token_expires_in = token_response.get(
-                    "refresh_token_expires_in", 0
-                )
+                refresh_token_expires_in = token_response.get("refresh_token_expires_in", 0)
+                try:
+                    self.refresh_token_expires_in = int(refresh_token_expires_in)
+                except Exception:
+                    self.refresh_token_expires_in = 0
 
                 # Parse scopes
                 if "scope" in token_response:
@@ -922,7 +924,8 @@ class PKCEFlow(anywidget.AnyWidget):
         )
         
         # Configure environment-specific URLs for Cloudflare
-        self._configure_cloudflare_urls()
+        if self.provider == "cloudflare":
+            self._configure_cloudflare_urls()
 
     def _log(self, message: str) -> None:
         """Log a message."""
@@ -933,39 +936,74 @@ class PKCEFlow(anywidget.AnyWidget):
         """Configure Cloudflare URLs based on environment detection."""
         if self.provider != "cloudflare":
             return
-            
+
         self._log("Configuring Cloudflare URLs based on environment")
         try:
             import js
             origin = js.eval("self.location?.origin")
+            href = js.eval("self.location?.href")
             self._log(f"WASM environment detected - origin: {origin}")
+            self._log(f"WASM environment detected - href: {href}")
             
             if "localhost:8088" in origin:
-                self._log("Environment: Local WASM with Cloudflare Pages")
+                self._log("Environment: Local WASM, redirects handled by Cloudflare Pages")
                 self.logout_url = f"{origin}/oauth2/revoke"
                 self.redirect_uri = f"{origin}/oauth/callback"
                 self.token_url = f"{origin}/oauth2/token"
                 self.use_new_tab = True
+            elif "localhost:2718" in origin:
+                # Check if this is workspace mode (has ?file= parameter)
+                if "?file=" in href:
+                    self._log("Environment: Local Python workspace mode (with ?file= parameter)")
+                    # For workspace mode, we need to preserve the file parameter
+                    # Use the sandbox callback which will redirect back to the workspace
+                    self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
+                    self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                    self.token_url = "https://dash.cloudflare.com/oauth2/token"
+                    self.use_new_tab = False
+                else:
+                    self._log("Environment: Local Python sandbox mode (no ?file= parameter)")
+                    # For sandbox mode, use the same configuration
+                    self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
+                    self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                    self.token_url = "https://dash.cloudflare.com/oauth2/token"
+                    self.use_new_tab = False
             elif "localhost" in origin:
-                self._log("Environment: Local WASM (standard)")
-                # Use direct Cloudflare URLs for standard localhost
+                self._log("Environment: Local WASM, without Cloudflare Pages redirect handling")
+                self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
+                self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                self.token_url = "https://dash.cloudflare.com/oauth2/token"
+                self.use_new_tab = False
+            elif "marimo.io" in origin:
+                self._log("Environment: Marimo Sandbox (marimo.io/p/dev), using sandbox callback")
                 self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
                 self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
                 self.token_url = "https://dash.cloudflare.com/oauth2/token"
                 self.use_new_tab = False
             else:
-                self._log("Environment: Production WASM")
+                self._log("Environment: Deployed (Production) WASM, redirects handled by Cloudflare Pages")
                 self.logout_url = f"{origin}/oauth2/revoke"
                 self.redirect_uri = f"{origin}/oauth/callback"
                 self.token_url = f"{origin}/oauth2/token"
                 self.use_new_tab = True
         except (AttributeError, ModuleNotFoundError, NameError):
-            self._log("Environment: Local Python")
-            # Use direct Cloudflare URLs for local Python
-            self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
-            self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
-            self.token_url = "https://dash.cloudflare.com/oauth2/token"
-            self.use_new_tab = False
+            # Python environment - check if we can detect workspace mode
+            self._log("Environment: Local Python without Cloudflare Pages redirect handling")
+            
+            # Try to detect workspace mode by checking if href contains ?file=
+            if hasattr(self, 'href') and self.href and "?file=" in self.href:
+                self._log("Environment: Local Python workspace mode detected (with ?file= parameter)")
+                # For workspace mode, preserve the file parameter in state
+                self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
+                self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                self.token_url = "https://dash.cloudflare.com/oauth2/token"
+                self.use_new_tab = False
+            else:
+                self._log("Environment: Local Python sandbox mode detected (no ?file= parameter)")
+                self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
+                self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                self.token_url = "https://dash.cloudflare.com/oauth2/token"
+                self.use_new_tab = False
 
     def _generate_code_verifier(self) -> str:
         """Generate a code verifier for PKCE."""
@@ -1015,9 +1053,42 @@ class PKCEFlow(anywidget.AnyWidget):
                     f"Fallback hostname for sandbox_id: {sandbox_id}"
                 )
 
+        # Determine the appropriate href for the state
+        # In WASM environments, we want to redirect to a valid page, not the login page
+        state_href = self.href
+        
+        # Check if we're in a WASM environment and the href points to a login page
+        try:
+            import js
+            # We're in a WASM environment
+            if self.href and ("login" in self.href or "pkceflow_login" in self.href):
+                # Extract the origin and construct a valid href
+                from urllib.parse import urlparse
+                parsed = urlparse(self.href)
+                # Redirect to main page instead of login page
+                state_href = f"{parsed.scheme}://{parsed.netloc}/"
+                if self.debug:
+                    self._log(f"WASM environment detected, redirecting from {self.href} to {state_href}")
+        except (ImportError, AttributeError, ModuleNotFoundError, NameError):
+            # We're in a Python environment, use the original href
+            if self.debug:
+                self._log(f"Python environment detected, using original href: {self.href}")
+        
+        # Special handling for workspace mode (localhost:2718 with ?file= parameter)
+        if self.href and "localhost:2718" in self.href and "?file=" in self.href:
+            if self.debug:
+                self._log(f"Workspace mode detected, preserving file parameter in state: {self.href}")
+            # Keep the full href with file parameter for workspace mode
+            state_href = self.href
+        elif self.href and "localhost:2718" in self.href:
+            if self.debug:
+                self._log(f"Localhost:2718 detected but no file parameter, using original href: {self.href}")
+            # For localhost:2718 without file parameter, still preserve the href
+            state_href = self.href
+        
         state = OrderedDict([
             ("sandbox_id", sandbox_id),
-            ("href", self.href),
+            ("href", state_href),
             ("nonce", f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}"),
         ])
         if self.additional_state is not None:
@@ -1311,12 +1382,59 @@ class PKCEFlow(anywidget.AnyWidget):
         if self.debug:
             self._log(f"Making {method} request to {url} with fallback")
         
-        # If we have a proxy configured, try with proxy first
+        # Try direct connection first (no proxy)
         tried_proxy = False
         error_to_retry = None
+        try:
+            if self.debug:
+                self._log("Attempting direct connection (no proxy)")
+            if use_requests:
+                response = requests.request(
+                    method,
+                    url,
+                    data=data,
+                    headers=headers,
+                    proxies=None,  # No proxy for direct connection
+                    timeout=30
+                )
+                content_type = response.headers.get("Content-Type", "")
+                if "application/json" in content_type:
+                    return response.json()
+                else:
+                    response_text = response.text
+                    parsed_data = {}
+                    for pair in response_text.split("&"):
+                        if "=" in pair:
+                            key, value = pair.split("=", 1)
+                            parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                    return parsed_data
+            else:
+                if method == "POST" and data:
+                    encoded_data = urllib.parse.urlencode(data).encode("utf-8")
+                    req = urllib.request.Request(url, data=encoded_data, headers=headers)
+                else:
+                    req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req) as response:
+                    response_data = response.read().decode("utf-8")
+                    content_type = response.getheader("Content-Type", "")
+                    if "application/json" in content_type:
+                        return json.loads(response_data)
+                    else:
+                        parsed_data = {}
+                        for pair in response_data.split("&"):
+                            if "=" in pair:
+                                key, value = pair.split("=", 1)
+                                parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                        return parsed_data
+        except Exception as direct_error:
+            error_to_retry = direct_error
+            if self.debug:
+                self._log(f"Direct connection failed: {str(direct_error)}. Trying proxy as fallback.")
+        
+        # If direct connection failed and we have a proxy configured, try with proxy
         if hasattr(self, 'proxy') and self.proxy and self.proxy.strip():
             if self.debug:
-                self._log(f"Trying proxy first: {self.proxy}")
+                self._log(f"Trying proxy as fallback: {self.proxy}")
             try:
                 # Format proxy URL properly
                 if self.proxy.startswith(('http://', 'https://')):
@@ -1376,61 +1494,18 @@ class PKCEFlow(anywidget.AnyWidget):
                             return parsed_data
             except Exception as proxy_error:
                 tried_proxy = True
-                error_to_retry = proxy_error
                 if self.debug:
-                    self._log(f"Proxy connection failed: {str(proxy_error)}. Falling back to direct connection.")
+                    self._log(f"Proxy connection also failed: {str(proxy_error)}")
 
-        # Try direct connection (no proxy) if proxy is not set or failed
-        try:
+        # If both direct and proxy failed, raise the original error
+        if tried_proxy:
             if self.debug:
-                self._log("Attempting direct connection (no proxy)")
-            if use_requests:
-                response = requests.request(
-                    method,
-                    url,
-                    data=data,
-                    headers=headers,
-                    proxies=None,  # No proxy for direct connection
-                    timeout=30
-                )
-                content_type = response.headers.get("Content-Type", "")
-                if "application/json" in content_type:
-                    return response.json()
-                else:
-                    response_text = response.text
-                    parsed_data = {}
-                    for pair in response_text.split("&"):
-                        if "=" in pair:
-                            key, value = pair.split("=", 1)
-                            parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
-                    return parsed_data
-            else:
-                if method == "POST" and data:
-                    encoded_data = urllib.parse.urlencode(data).encode("utf-8")
-                    req = urllib.request.Request(url, data=encoded_data, headers=headers)
-                else:
-                    req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req) as response:
-                    response_data = response.read().decode("utf-8")
-                    content_type = response.getheader("Content-Type", "")
-                    if "application/json" in content_type:
-                        return json.loads(response_data)
-                    else:
-                        parsed_data = {}
-                        for pair in response_data.split("&"):
-                            if "=" in pair:
-                                key, value = pair.split("=", 1)
-                                parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
-                        return parsed_data
-        except Exception as direct_error:
-            if tried_proxy:
-                if self.debug:
-                    self._log(f"Both proxy and direct connection failed. Raising proxy error: {str(error_to_retry)}")
-                raise error_to_retry
-            else:
-                if self.debug:
-                    self._log(f"Direct connection failed: {str(direct_error)}")
-                raise direct_error
+                self._log(f"Both direct and proxy connection failed. Raising original error: {str(error_to_retry)}")
+            raise error_to_retry
+        else:
+            if self.debug:
+                self._log(f"Direct connection failed: {str(error_to_retry)}")
+            raise error_to_retry
 
     def _exchange_code_for_token(self) -> Dict[str, Any]:
         """Exchange the authorization code for tokens."""

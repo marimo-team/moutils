@@ -98,7 +98,8 @@ def lint_notebook_references(export_path, filenames):
     for filename in os.listdir(export_path):
         if not filename.endswith(".html"):
             continue
-
+        if filename == "login.html":  # Exclude static HTML assets
+            continue
         if filename not in filenames:
             print(
                 "ERROR: Missing reference for exported notebook: %s" % filename,

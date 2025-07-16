@@ -47,12 +47,12 @@ class MockOAuthHandler(BaseHTTPRequestHandler):
             return
 
         # Handle device code endpoint
-        if re.search(r"/device/code$", self.path):
+        if re.search(r"/device/code", self.path):
             response = self._handle_device_code(params)
             self._send_response(response)
 
         # Handle token endpoint
-        elif re.search(r"/token$|/access_token$", self.path):
+        elif re.search(r"/token|/access_token", self.path):
             response = self._handle_token_request(params)
             self._send_response(response)
 

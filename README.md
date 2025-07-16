@@ -83,8 +83,14 @@ shell("npm install", working_directory="./frontend")
 
 We use [uv](https://github.com/astral-sh/uv) for development.
 
+Specific notebook
 ```sh
 uv run marimo edit notebooks/example.py
+```
+
+Workspace
+```sh
+uv run --active marimo edit --port 2718
 ```
 
 ### Installing pre-commit
@@ -96,6 +102,8 @@ pre-commit
 
 ### Testing
 
+To run all tests (including environment detection and OAuth device flow):
+
 ```sh
-uvx --with anywidget pytest tests
+pytest -v tests/
 ```

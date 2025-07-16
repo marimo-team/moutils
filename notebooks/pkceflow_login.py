@@ -1,21 +1,16 @@
 # /// script
-# requires-python = ">=3.13"
+# requires-python = ">=3.8"
 # dependencies = [
 #     "anywidget",
 #     "marimo",
 #     "nbformat",
-#     "requests==2.32.4",
+#     "requests",
 # ]
 # ///
-
 import marimo
 
-__generated_with = "0.11.26"
-app = marimo.App(
-    width="full",
-    app_title="PKCE Login Notebook",
-    auto_download=["ipynb", "html"],
-)
+__generated_with = "0.14.10"
+app = marimo.App(width="full", app_title="Cloudflare Notebook", auto_download=["ipynb", "html"])
 
 
 ###############
@@ -53,11 +48,10 @@ def _():
     return PKCEFlow, Request, debug, get_accounts, is_wasm, json, mo, moutils, proxy, requests, sys, urllib, urlopen, warnings
 
 
-
 @app.cell(hide_code=True)
 def _(PKCEFlow):
     # Login to Cloudflare - click to view code
-    df = PKCEFlow(provider="cloudflare")
+    df = PKCEFlow(provider="cloudflare", debug=True)
     df
     return df
 
