@@ -15,6 +15,27 @@
         font-size: 18px;
         margin: 20px 0;
       }
+      .error {
+        color: #d32f2f;
+        background-color: #ffebee;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      .success {
+        color: #2e7d32;
+        background-color: #e8f5e8;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      .info {
+        color: #1976d2;
+        background-color: #e3f2fd;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
       .spinner {
         border: 4px solid #f3f3f3;
         border-top: 4px solid #f38020;
@@ -41,68 +62,155 @@
     </div>
 
     <script>
-      // Handle OAuth callback - check for callback parameters on page load
-      if (window.location.search.indexOf("code") !== -1) {
-        var params = new URLSearchParams(window.location.search);
-        var code = params.get("code");
-        var state = params.get("state");
+      // Add error handling for the entire script
+      window.addEventListener('error', function(e) {
+        console.error('Global error:', e.error);
+        document.getElementById('content').innerHTML = 
+          '<div class="error">JavaScript Error: ' + e.error.message + '</div>';
+      });
 
-        if (code && state) {
-          try {
-            // Decode the state parameter (base64url encoded)
-            var decodedState = atob(
-              state.replace(/-/g, "+").replace(/_/g, "/")
-            );
-            var stateData = JSON.parse(decodedState);
+      console.log("OAuth callback handler loaded");
+      console.log("URL search params:", window.location.search);
+      
+      try {
+        // Handle OAuth callback - check for callback parameters on page load
+        if (window.location.search.indexOf("code") !== -1) {
+          var params = new URLSearchParams(window.location.search);
+          var code = params.get("code");
+          var state = params.get("state");
 
-            // Extract the href from the state
-            var redirectUrl;
-            if (stateData.href && stateData.href.trim() !== "") {
-              redirectUrl = new URL(stateData.href);
-              // Add all current query parameters to the redirect URL
-              for (var [key, value] of params.entries()) {
-                redirectUrl.searchParams.set(key, value);
+          if (code && state) {
+            console.log("Both code and state found, processing callback...");
+            
+            try {
+              // Decode the state parameter (base64url encoded)
+              console.log("Decoding state parameter...");
+              var decodedState = atob(
+                state.replace(/-/g, "+").replace(/_/g, "/")
+              );
+              console.log("Decoded state:", decodedState);
+              var stateData = JSON.parse(decodedState);
+              console.log("Parsed state data:", stateData);
+
+              // Extract the href from the state and validate it
+              var redirectUrl;
+              if (stateData.href && stateData.href.trim() !== "") {
+                console.log("Original href from state:", stateData.href);
+                
+                // Check if this is workspace mode (localhost:2718 with ?file= parameter)
+                var hrefUrl = new URL(stateData.href);
+                var isWorkspaceMode = hrefUrl.hostname === 'localhost' && 
+                                    hrefUrl.port === '2718' && 
+                                    hrefUrl.searchParams.has('file');
+                
+                if (isWorkspaceMode) {
+                  console.log("Workspace mode detected, preserving full URL with file parameter");
+                  redirectUrl = new URL(stateData.href);
+                  // Don't overwrite the file parameter with OAuth params
+                  console.log("Final redirect URL (workspace mode):", redirectUrl.toString());
+                } else {
+                  // Check if the href points to a valid path (for non-workspace modes)
+                  var path = hrefUrl.pathname;
+                  
+                  // If the path contains 'pkceflow_login' or 'login' or is the current login page, redirect to main page
+                  if (path.includes('pkceflow_login') || path.includes('login') || path.includes('public/login')) {
+                    console.log("Invalid or login path detected, redirecting to main page");
+                    redirectUrl = new URL(hrefUrl.origin + '/');
+                  } else {
+                    redirectUrl = new URL(stateData.href);
+                  }
+                  
+                  // Add all current query parameters to the redirect URL (for non-workspace modes)
+                  for (var [key, value] of params.entries()) {
+                    redirectUrl.searchParams.set(key, value);
+                  }
+                  console.log("Final redirect URL (non-workspace):", redirectUrl.toString());
+                }
+              } else {
+                // If no href, just use the current origin with main page
+                redirectUrl = new URL(window.location.origin + '/');
+                console.log("No href in state, using main page:", redirectUrl.toString());
               }
-            } else {
-              // If no href, just use the current origin
-              redirectUrl = new URL(window.location.origin);
-            }
 
-            // Store the OAuth data in localStorage and close the popup
-            console.log("Storing OAuth data in localStorage...");
-            localStorage.setItem("__pkce_auth_code", code);
-            localStorage.setItem("__pkce_state", state);
-            
-            // Also store all params for completeness
-            for (var [key, value] of params.entries()) {
-              localStorage.setItem("__pkce_" + key, value);
+              // Store the OAuth data in localStorage
+              console.log("Storing OAuth data in localStorage...");
+              try {
+                localStorage.setItem("__pkce_auth_code", code);
+                localStorage.setItem("__pkce_state", state);
+                
+                // Also store all params for completeness
+                for (var [key, value] of params.entries()) {
+                  localStorage.setItem("__pkce_" + key, value);
+                }
+                console.log("OAuth data stored successfully");
+              } catch (storageError) {
+                console.error("Error storing in localStorage:", storageError);
+              }
+              
+              console.log("OAuth data stored, attempting to close window...");
+              document.getElementById("content").innerHTML =
+                "<div class='spinner'></div><div class='message'>Login successful! This tab will close in a moment...</div>";
+              
+              // Try to close the window, but with a shorter timeout and better fallback
+              setTimeout(function () {
+                console.log("Attempting to close window...");
+                console.log("window.opener:", window.opener);
+                console.log("window.parent:", window.parent);
+                console.log("window.top:", window.top);
+                console.log("redirectUrl:", redirectUrl.toString());
+                
+                try {
+                  // Check if this is a popup window
+                  if (window.opener && window.opener !== window) {
+                    console.log("This is a popup window, attempting to close...");
+                    window.close();
+                    console.log("Window close attempted");
+                  } else {
+                    console.log("Not a popup window, redirecting instead...");
+                    console.log("Redirecting to:", redirectUrl.toString());
+                    window.location.href = redirectUrl.toString();
+                  }
+                } catch (closeError) {
+                  console.error("Error closing window:", closeError);
+                  // If we can't close the window, redirect instead
+                  console.log("Redirecting instead of closing...");
+                  window.location.href = redirectUrl.toString();
+                }
+              }, 1000); // Increased timeout to 1 second for debugging
+            } catch (error) {
+              console.error("Error processing state parameter:", error);
+              document.getElementById("content").innerHTML =
+                "<div class='message'>Error processing callback: " +
+                error.message +
+                "</div>";
             }
-            
-            console.log("OAuth data stored, closing popup in a moment...");
+          } else {
+            console.log("Missing code or state parameter");
             document.getElementById("content").innerHTML =
-              "<div class='spinner'></div><div class='message'>Login successful! This tab will close in a moment...</div>";
-            setTimeout(function () {
-              window.close();
-            }, 1000);
-          } catch (error) {
-            console.error("Error processing state parameter:", error);
-            document.getElementById("content").innerHTML =
-              "<div class='message'>Error processing callback: " +
-              error.message +
-              "</div>";
+              "<div class='error'>Invalid callback parameters</div>";
           }
         } else {
+          console.log("No 'code' parameter found in URL");
+          // No callback parameters - show info message instead of redirecting
           document.getElementById("content").innerHTML =
-            "<div class='message'>Invalid callback parameters</div>";
+            "<div class='info'>" +
+            "<h2>OAuth Callback Handler</h2>" +
+            "<p>This page is designed to handle OAuth callbacks from Cloudflare.</p>" +
+            "<p>When accessed directly (without OAuth parameters), it shows this message.</p>" +
+            "<p>During normal OAuth flow, this page will:</p>" +
+            "<ul style='text-align: left; display: inline-block;'>" +
+            "<li>Process the OAuth response</li>" +
+            "<li>Store authentication data</li>" +
+            "<li>Close the popup window or redirect</li>" +
+            "</ul>" +
+            "<p><strong>Current URL:</strong> " + window.location.href + "</p>" +
+            "<p><strong>Search params:</strong> " + window.location.search + "</p>" +
+            "</div>";
         }
-      } else {
-        // No callback parameters, redirect to original URL
-        var originalUrl = localStorage.getItem("original_url");
-        if (originalUrl) {
-          window.location.href = originalUrl;
-        } else {
-          window.location.href = window.top.location.origin;
-        }
+      } catch (error) {
+        console.error("Error in OAuth callback processing:", error);
+        document.getElementById("content").innerHTML =
+          "<div class='error'>Error processing callback: " + error.message + "</div>";
       }
     </script>
   </body>
