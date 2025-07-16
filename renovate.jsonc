@@ -1,0 +1,12 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "schedule:monthly"],
+  "packageRules": [
+    {
+      // Disable pep manager
+      // Since this is a python library, we want to keep bounds as low as possible
+      "managers": ["pep"],
+      "enabled": false
+    }
+  ]
+}
