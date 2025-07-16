@@ -311,7 +311,7 @@ requires-dist = [
     { name = "marimo", specifier = ">=0.11.26" },
     { name = "marimo", marker = "extra == 'dev'" },
     { name = "pytest", specifier = ">=8.4.1" },
-    { name = "requests", specifier = ">=2.32.4" },
+    { name = "requests", specifier = ">=2.31.0" },
 ]
 provides-extras = ["dev"]
 
@@ -502,7 +502,7 @@ wheels = [
 
 [[package]]
 name = "requests"
-version = "2.32.4"
+version = "2.31.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
