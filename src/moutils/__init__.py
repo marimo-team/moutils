@@ -376,11 +376,15 @@ class ShellWidget(anywidget.AnyWidget):
     command = traitlets.Unicode("").tag(sync=True)
     working_directory = traitlets.Unicode(".").tag(sync=True)
 
-    def __init__(self, command: str, working_directory: str = "."):
+    def __init__(self, command: str, working_directory: str = "." , run: bool = False):
         super().__init__()
         self.command = command
         self.working_directory = working_directory
         self.on_msg(self._handle_msg)
+
+        # Auto-run if parameter is True
+        if run:
+            self.run()
 
     def _handle_msg(self, widget, content, buffers):
         if content == "execute_command":
@@ -437,12 +441,29 @@ class ShellWidget(anywidget.AnyWidget):
         except Exception as e:
             self.send({"type": "error", "error": str(e)})
 
+
+    def run(self):
+        """Public method to start execution without frontend button."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self._execute_command_async())
+            else:
+                loop.run_until_complete(self._execute_command_async())
+
+        except RuntimeError:
+            asyncio.run(self._execute_command_async())
+        
+        except Exception as e:
+            self.send({"type": "error", "error": str(e)})
+
+
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)
         return _wrap_marimo(instance, *args, **kwargs)
 
 
-def shell(command: str, working_directory: str = ".") -> ShellWidget:
+def shell(command: str, working_directory: str = ".", run: bool = False) -> ShellWidget:
     """
     Create a shell command widget.
 
@@ -459,7 +480,7 @@ def shell(command: str, working_directory: str = ".") -> ShellWidget:
         shell("find . -name '*.py' | head -10")
         shell("npm install", working_directory="./frontend")
     """
-    return ShellWidget(command, working_directory)
+    return ShellWidget(command, working_directory, run=run)
 
 
 class CopyToClipboard(anywidget.AnyWidget):
