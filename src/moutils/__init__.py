@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 import asyncio
 import sys
+import os
+import signal
 
 import anywidget
 import traitlets
@@ -381,6 +383,8 @@ class ShellWidget(anywidget.AnyWidget):
         self.command = command
         self.working_directory = working_directory
         self.on_msg(self._handle_msg)
+        self._process = None
+        self._pgid = None
 
         # Auto-run if parameter is True
         if run:
@@ -388,12 +392,10 @@ class ShellWidget(anywidget.AnyWidget):
 
     def _handle_msg(self, widget, content, buffers):
         if content == "execute_command":
-            # Handle async execution properly in Jupyter
+            # ejecución robusta en cualquier contexto (Jupyter, script normal, etc.)
             if hasattr(asyncio, "current_task") and asyncio.current_task():
-                # We're already in an async context
                 asyncio.create_task(self._execute_command_async())
             else:
-                # Create new event loop if needed
                 try:
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
@@ -401,46 +403,57 @@ class ShellWidget(anywidget.AnyWidget):
                     else:
                         loop.run_until_complete(self._execute_command_async())
                 except RuntimeError:
-                    # Fallback for environments without event loop
                     asyncio.run(self._execute_command_async())
+
+        elif content == "terminate_process":
+            self.terminate()
+
+        elif content == "kill_process":
+            self.kill()
 
     async def _execute_command_async(self):
         """Execute the shell command asynchronously and stream output."""
         try:
-            # Determine shell based on platform
             shell = "/bin/bash" if sys.platform != "win32" else "cmd"
             shell_args = ["-c"] if sys.platform != "win32" else ["/c"]
 
-            # Create async subprocess
-            process = await asyncio.create_subprocess_exec(
+            # Create process group so we can terminate/kill the whole group
+            self._process = await asyncio.create_subprocess_exec(
                 shell,
                 *shell_args,
                 self.command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 cwd=self.working_directory,
+                start_new_session=(sys.platform != "win32"),  # POSIX: new session -> new process group
             )
 
-            # Stream output
+            if sys.platform != "win32":
+                # In a new session, pgid == child's pid; no race with getpgid
+                self._pgid = self._process.pid
+            else:
+                self._pgid = None
+
             while True:
-                chunk = await process.stdout.read(1024)
+                chunk = await self._process.stdout.read(1024)
                 if not chunk:
                     break
-
-                try:
-                    decoded_chunk = chunk.decode("utf-8", errors="replace")
-                except UnicodeDecodeError:
-                    decoded_chunk = chunk.decode("latin-1", errors="replace")
-
+                decoded_chunk = chunk.decode("utf-8", errors="replace")
                 self.send({"type": "output", "data": decoded_chunk})
 
-            # Wait for completion
-            return_code = await process.wait()
+            return_code = await self._process.wait()
             self.send({"type": "completed", "returncode": return_code})
+
+            self._process = None
+            self._pgid = None
 
         except Exception as e:
             self.send({"type": "error", "error": str(e)})
 
+        finally:
+            # Always reset state, even if an exception happened
+            self._process = None
+            self._pgid = None
 
     def run(self):
         """Public method to start execution without frontend button."""
@@ -457,6 +470,35 @@ class ShellWidget(anywidget.AnyWidget):
         except Exception as e:
             self.send({"type": "error", "error": str(e)})
 
+
+    def terminate(self):
+        """Send SIGTERM to the process group."""
+        if not self._process or self._process.returncode is not None:
+            self.send({"type": "not_running"})
+            return
+        try:
+            if self._pgid:
+                os.killpg(self._pgid, signal.SIGTERM)
+            else:
+                self._process.terminate()
+            self.send({"type": "terminated"})
+        except Exception as e:
+            self.send({"type": "error", "error": f"Terminate failed: {e}"})
+
+
+    def kill(self):
+        """Send SIGKILL to the process group."""
+        if not self._process or self._process.returncode is not None:
+            self.send({"type": "not_running"})
+            return
+        try:
+            if self._pgid:
+                os.killpg(self._pgid, signal.SIGKILL)
+            else:
+                self._process.kill()
+            self.send({"type": "killed"})
+        except Exception as e:
+            self.send({"type": "error", "error": f"Kill failed: {e}"})
 
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)
