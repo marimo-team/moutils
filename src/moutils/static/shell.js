@@ -5,9 +5,60 @@ function render({ model, el }) {
   const terminateBtn = document.createElement('button');
   const killBtn = document.createElement('button');
 
+  const toolbar = document.createElement('div');
+  const menuBtn = document.createElement('button');
+  const menuPanel = document.createElement('div');
+  const terminalWrapper = document.createElement('div');
+
+  // a11y + base UI
+  terminalWrapper.style.cssText = `
+    position: relative; /* anchors toolbar absolutely without taking space */
+  `;
+  toolbar.style.cssText = `
+    position: absolute; /* overlay inside the terminal */
+    top: 0px;          /* lower the button inside the terminal */
+    right: 0px;        /* keep it in the top-right corner */
+    display: inline-flex;
+    align-items: center;
+    z-index: 2;         /* above terminal content */
+  `;
+
+  menuBtn.type = 'button';
+  menuBtn.setAttribute('aria-haspopup', 'menu');
+  menuBtn.setAttribute('aria-label', 'Toggle command menu');
+  menuBtn.textContent = '☰';
+
+  menuBtn.style.cssText = `
+    background:#2d2d2d;color:#fff;border:none;
+    width:28px;height:28px; /* compact */
+    padding:0; border-radius:8px;
+    cursor:pointer;font-size:14px;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;
+  `;
+
+  menuBtn.onmouseover = () => (menuBtn.style.background = '#444');
+  menuBtn.onmouseout  = () => (menuBtn.style.background = '#2d2d2d');
+
+  // Make the panel a Popover (top layer avoids clipping/overflow)
+  menuPanel.setAttribute('popover', 'manual'); // manual to avoid reopen-on-click race
+  menuPanel.style.cssText = `
+    position: fixed;
+    background:#1f1f1f; border:1px solid #333; border-radius:10px;
+    padding:10px; min-width:200px; /* compact menu */
+    box-shadow:0 8px 24px rgba(0,0,0,.3);
+    z-index: 1000;
+  `;
+
+  // mount toolbar (panel vacío por ahora)
+  toolbar.appendChild(menuBtn);
+  toolbar.appendChild(menuPanel);
+
   // Styling
   container.style.cssText = `
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-family: -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        Roboto, sans-serif;
     `;
 
   const styleButton = (btn, bg, hover) => {
@@ -63,12 +114,75 @@ function render({ model, el }) {
   controls.appendChild(terminateBtn);
   controls.appendChild(killBtn);
 
-  container.appendChild(controls);
-  container.appendChild(output);
+// Move action buttons into the dropdown panel instead of showing them inline
+  menuPanel.appendChild(runBtn);
+  menuPanel.appendChild(terminateBtn);
+  menuPanel.appendChild(killBtn);
+
+  [runBtn, terminateBtn, killBtn].forEach(btn => {
+    btn.style.width = '100%'; btn.style.margin = '0 0 8px 0'; btn.style.textAlign = 'left';
+  });
+
+  // Mount terminal view first to occupy the top space; toolbar overlays inside it
+  terminalWrapper.appendChild(output);
+  terminalWrapper.appendChild(toolbar);
+  container.appendChild(terminalWrapper);
   el.appendChild(container);
+
+
+  const positionPopoverNearButton = () => {
+    // Compute button rect each time (handles scroll, resize, layout changes)
+    const r = menuBtn.getBoundingClientRect();
+
+    const panelWidth = 220; // must match CSS min-width
+    const offsetX = -275;   // negative values move it left, positive right
+    const offsetY = 0;      // vertical distance from button
+
+    // Base position anchored to button's left edge
+    let left = r.left + offsetX;
+    // Prevent it from going out of viewport
+    if (left < 8) left = 8;
+    if (left + panelWidth > window.innerWidth - 8) {
+      left = window.innerWidth - panelWidth - 8;
+    }
+    const top = r.bottom + offsetY;
+
+    menuPanel.style.left = `${left}px`;
+    menuPanel.style.top  = `${top}px`;
+  };
+
+  menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menuPanel.matches(':popover-open')) {
+      menuPanel.hidePopover();
+    } else {
+      positionPopoverNearButton();
+      menuPanel.showPopover();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!menuPanel.contains(e.target) && e.target !== menuBtn && menuPanel.matches(':popover-open')) {
+      menuPanel.hidePopover();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menuPanel.matches(':popover-open')) {
+      menuPanel.hidePopover();
+    }
+  });
+  window.addEventListener('resize', () => {
+    if (menuPanel.matches(':popover-open')) positionPopoverNearButton();
+  });
+  window.addEventListener('scroll', () => {
+    if (menuPanel.matches(':popover-open')) positionPopoverNearButton();
+  });
+
 
   // Run button
   runBtn.addEventListener('click', () => {
+    if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
     runBtn.disabled = true;
     runBtn.textContent = '⏳ Running...';
     runBtn.style.background = '#666';
@@ -78,12 +192,14 @@ function render({ model, el }) {
 
   // Terminate button
   terminateBtn.addEventListener('click', () => {
+    if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
     model.send('terminate_process');
     output.textContent += '\n\n🛑 Terminate requested...';
   });
 
   // Kill button
   killBtn.addEventListener('click', () => {
+    if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
     model.send('kill_process');
     output.textContent += '\n\n❌ Kill requested...';
   });
@@ -151,6 +267,7 @@ model.on('msg:custom', (msg) => {
       output.textContent += `\n\n💥 Error: ${msg.error}`;
       break;
   }
+
 
   // Always keep the output scrolled to bottom
   output.scrollTop = output.scrollHeight;
