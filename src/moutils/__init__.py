@@ -411,6 +411,9 @@ class ShellWidget(anywidget.AnyWidget):
         elif content == "kill_process":
             self.kill()
 
+        elif isinstance(content, dict) and content.get("type") == "input":
+            asyncio.create_task(self._send_input(content.get("data", "")))
+
     async def _execute_command_async(self):
         """Execute the shell command asynchronously and stream output."""
         try:
@@ -424,15 +427,31 @@ class ShellWidget(anywidget.AnyWidget):
                 self.command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                stdin=asyncio.subprocess.PIPE,  # <-- Added to allow input
                 cwd=self.working_directory,
                 start_new_session=(sys.platform != "win32"),  # POSIX: new session -> new process group
             )
 
-            if sys.platform != "win32":
-                # In a new session, pgid == child's pid; no race with getpgid
-                self._pgid = self._process.pid
-            else:
-                self._pgid = None
+            # Announce process start to the frontend as soon as we have a PID
+            try:
+                pid = self._process.pid
+                pgid = None
+                if sys.platform != "win32":
+                    # In a new session, pgid == child's pid
+                    self._pgid = self._process.pid
+                    pgid = self._pgid
+                else:
+                    self._pgid = None
+                self.send({"type": "started", "pid": pid, "pgid": pgid})
+            except Exception:
+                # Non-fatal if anything goes wrong here
+                pass
+
+            # Emit an initial prompt line so users see activity immediately (useful when run=True)
+            try:
+                self.send({"type": "output", "data": f"$ {self.command}\n"})
+            except Exception:
+                pass
 
             while True:
                 chunk = await self._process.stdout.read(1024)
@@ -454,6 +473,12 @@ class ShellWidget(anywidget.AnyWidget):
             # Always reset state, even if an exception happened
             self._process = None
             self._pgid = None
+
+    async def _send_input(self, text: str):
+        if self._process and self._process.stdin:
+            self._process.stdin.write(text.encode() + b"\n")
+            await self._process.stdin.drain()
+            self.send({"type": "input_sent", "data": text})
 
     def run(self):
         """Public method to start execution without frontend button."""
@@ -537,7 +562,4 @@ class CopyToClipboard(anywidget.AnyWidget):
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)
         return _wrap_marimo(instance, *args, **kwargs)
-
-
-
-
+    

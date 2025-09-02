@@ -49,6 +49,58 @@ function render({ model, el }) {
     z-index: 1000;
   `;
 
+  // Input field and send button
+  const inputWrapper = document.createElement('div');
+  inputWrapper.style.cssText = 'display: flex; gap: 8px; margin-bottom: 8px;';
+
+  const inputField = document.createElement('input');
+  inputField.type = 'text';
+  inputField.placeholder = 'Send input to process...';
+  inputField.style.cssText = `
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid #333;
+    font-size: 12px;
+    background: #222;
+    color: #fff;
+  `;
+
+  const sendBtn = document.createElement('button');
+  sendBtn.textContent = 'Send';
+  sendBtn.style.cssText = `
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: 'SF Mono', monospace;
+    transition: background-color 0.2s ease;
+  `;
+  sendBtn.onmouseover = () => (sendBtn.style.background = '#218838');
+  sendBtn.onmouseout = () => (sendBtn.style.background = '#28a745');
+
+
+  sendBtn.onclick = () => {
+    const text = inputField.value;
+    if (text.trim() !== "") {
+      model.send({type: "input", data: text});
+      inputField.value = "";
+    }
+  };
+
+  // Allow sending input with Enter key for better UX
+  inputField.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      sendBtn.click();
+    }
+  });
+
+  inputWrapper.appendChild(inputField);
+  inputWrapper.appendChild(sendBtn);
+
   // mount toolbar (panel vacío por ahora)
   toolbar.appendChild(menuBtn);
   toolbar.appendChild(menuPanel);
@@ -114,8 +166,11 @@ function render({ model, el }) {
   controls.appendChild(terminateBtn);
   controls.appendChild(killBtn);
 
-// Move action buttons into the dropdown panel instead of showing them inline
+  
+
+  // Move action buttons into the dropdown panel instead of showing them inline
   menuPanel.appendChild(runBtn);
+  menuPanel.appendChild(inputWrapper);
   menuPanel.appendChild(terminateBtn);
   menuPanel.appendChild(killBtn);
 
@@ -131,25 +186,50 @@ function render({ model, el }) {
 
 
   const positionPopoverNearButton = () => {
-    // Compute button rect each time (handles scroll, resize, layout changes)
     const r = menuBtn.getBoundingClientRect();
 
-    const panelWidth = 220; // must match CSS min-width
-    const offsetX = -275;   // negative values move it left, positive right
-    const offsetY = 0;      // vertical distance from button
+    const panelWidth = measurePanelWidth(menuPanel);
 
-    // Base position anchored to button's left edge
-    let left = r.left + offsetX;
-    // Prevent it from going out of viewport
-    if (left < 8) left = 8;
-    if (left + panelWidth > window.innerWidth - 8) {
-      left = window.innerWidth - panelWidth - 8;
-    }
-    const top = r.bottom + offsetY;
+    let left = r.right - panelWidth;
 
-    menuPanel.style.left = `${left}px`;
-    menuPanel.style.top  = `${top}px`;
+    const style = window.getComputedStyle(menuPanel);
+    const isFixed = style.position === 'fixed';
+
+    const margin = 8;
+    const maxLeft = window.innerWidth - panelWidth - margin;
+    if (left < margin) left = margin;
+    if (left > maxLeft) left = maxLeft;
+
+    let top = r.bottom;
+
+    menuPanel.style.left = `${Math.round(left)}px`;
+    menuPanel.style.top  = `${Math.round(top)}px`;
   };
+  
+/**
+ * Measure the panel's rendered width even if it's hidden with display:none.
+ * Returns a number in CSS pixels.
+ */
+function measurePanelWidth(el) {
+  // If visible and laid out, use offsetWidth
+  if (el.offsetWidth) return el.offsetWidth;
+
+  // Temporarily reveal to measure without flashing
+  const prevDisplay = el.style.display;
+  const prevVisibility = el.style.visibility;
+
+  // Ensure it renders offscreen without affecting layout
+  el.style.visibility = 'hidden';
+  el.style.display = 'block';
+
+  const w = el.offsetWidth;
+
+  // Restore previous styles
+  el.style.display = prevDisplay;
+  el.style.visibility = prevVisibility;
+
+  return w;
+}
 
   menuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -161,22 +241,23 @@ function render({ model, el }) {
     }
   });
 
-  document.addEventListener('click', (e) => {
-    if (!menuPanel.contains(e.target) && e.target !== menuBtn && menuPanel.matches(':popover-open')) {
+  document.addEventListener('mousedown', (e) => {
+    if (
+      menuPanel.matches(':popover-open') &&
+      !menuPanel.contains(e.target) &&
+      e.target !== menuBtn
+    ) {
       menuPanel.hidePopover();
     }
   });
 
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && menuPanel.matches(':popover-open')) {
-      menuPanel.hidePopover();
-    }
-  });
-  window.addEventListener('resize', () => {
-    if (menuPanel.matches(':popover-open')) positionPopoverNearButton();
-  });
-  window.addEventListener('scroll', () => {
-    if (menuPanel.matches(':popover-open')) positionPopoverNearButton();
+  // Prevent clicks inside the menu from bubbling to the document handler (which closes the menu)
+  ['pointerdown', 'mousedown', 'click', 'touchstart'].forEach((evt) => {
+    menuPanel.addEventListener(
+      evt,
+      (e) => { e.stopPropagation(); },
+      false
+    );
   });
 
 
@@ -208,11 +289,12 @@ function render({ model, el }) {
 model.on('msg:custom', (msg) => {
   switch (msg.type) {
     case 'started':
-      // A process just started: enable control buttons
+      // Process just started: enable/disable controls accordingly and show header
       runBtn.disabled = true;
       terminateBtn.disabled = false;
       killBtn.disabled = false;
-      output.textContent += `\n\n🚀 Started (pid=${msg.pid}${msg.pgid ? `, pgid=${msg.pgid}` : ''})`;
+      output.textContent += `Started in (pid=${msg.pid}${msg.pgid ? `, pgid=${msg.pgid}` : ''})\n\n`;
+      output.scrollTop = output.scrollHeight;
       break;
 
     case 'output':
