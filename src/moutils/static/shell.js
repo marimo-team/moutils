@@ -1,3 +1,6 @@
+// shell.js — streaming output to a <pre> with rAF batching
+// All comments in English.
+
 function render({ model, el }) {
   const container = document.createElement('div');
   const runBtn = document.createElement('button');
@@ -82,7 +85,6 @@ function render({ model, el }) {
   sendBtn.onmouseover = () => (sendBtn.style.background = '#218838');
   sendBtn.onmouseout = () => (sendBtn.style.background = '#28a745');
 
-
   sendBtn.onclick = () => {
     const text = inputField.value;
     if (text.trim() !== "") {
@@ -154,6 +156,26 @@ function render({ model, el }) {
         min-height: 40px;
     `;
 
+  // --- Realtime stream buffer (smooth UI updates) ---
+  // Buffer chunks, flush once per animation frame for smooth scrolling.
+  const _streamBuffer = [];
+  let _isFlushing = false;
+  function _flushNow() {
+    _isFlushing = false;
+    if (_streamBuffer.length === 0) return;
+    const chunk = _streamBuffer.join('');
+    _streamBuffer.length = 0;
+    output.textContent += chunk;
+    output.scrollTop = output.scrollHeight; // auto-scroll
+  }
+  function write(chunk) {
+    _streamBuffer.push(chunk);
+    if (!_isFlushing) {
+      _isFlushing = true;
+      requestAnimationFrame(_flushNow);
+    }
+  }
+
   const updateButtonText = () => {
     const cmd = model.get('command');
     runBtn.textContent = `▶ Execute`;
@@ -165,8 +187,6 @@ function render({ model, el }) {
   controls.appendChild(runBtn);
   controls.appendChild(terminateBtn);
   controls.appendChild(killBtn);
-
-  
 
   // Move action buttons into the dropdown panel instead of showing them inline
   menuPanel.appendChild(runBtn);
@@ -184,16 +204,10 @@ function render({ model, el }) {
   container.appendChild(terminalWrapper);
   el.appendChild(container);
 
-
   const positionPopoverNearButton = () => {
     const r = menuBtn.getBoundingClientRect();
-
     const panelWidth = measurePanelWidth(menuPanel);
-
     let left = r.right - panelWidth;
-
-    const style = window.getComputedStyle(menuPanel);
-    const isFixed = style.position === 'fixed';
 
     const margin = 8;
     const maxLeft = window.innerWidth - panelWidth - margin;
@@ -201,35 +215,34 @@ function render({ model, el }) {
     if (left > maxLeft) left = maxLeft;
 
     let top = r.bottom;
-
     menuPanel.style.left = `${Math.round(left)}px`;
     menuPanel.style.top  = `${Math.round(top)}px`;
   };
   
-/**
- * Measure the panel's rendered width even if it's hidden with display:none.
- * Returns a number in CSS pixels.
- */
-function measurePanelWidth(el) {
-  // If visible and laid out, use offsetWidth
-  if (el.offsetWidth) return el.offsetWidth;
+  /**
+   * Measure the panel's rendered width even if it's hidden with display:none.
+   * Returns a number in CSS pixels.
+   */
+  function measurePanelWidth(el) {
+    // If visible and laid out, use offsetWidth
+    if (el.offsetWidth) return el.offsetWidth;
 
-  // Temporarily reveal to measure without flashing
-  const prevDisplay = el.style.display;
-  const prevVisibility = el.style.visibility;
+    // Temporarily reveal to measure without flashing
+    const prevDisplay = el.style.display;
+    const prevVisibility = el.style.visibility;
 
-  // Ensure it renders offscreen without affecting layout
-  el.style.visibility = 'hidden';
-  el.style.display = 'block';
+    // Ensure it renders offscreen without affecting layout
+    el.style.visibility = 'hidden';
+    el.style.display = 'block';
 
-  const w = el.offsetWidth;
+    const w = el.offsetWidth;
 
-  // Restore previous styles
-  el.style.display = prevDisplay;
-  el.style.visibility = prevVisibility;
+    // Restore previous styles
+    el.style.display = prevDisplay;
+    el.style.visibility = prevVisibility;
 
-  return w;
-}
+    return w;
+  }
 
   menuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -260,7 +273,6 @@ function measurePanelWidth(el) {
     );
   });
 
-
   // Run button
   runBtn.addEventListener('click', () => {
     if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
@@ -275,85 +287,78 @@ function measurePanelWidth(el) {
   terminateBtn.addEventListener('click', () => {
     if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
     model.send('terminate_process');
-    output.textContent += '\n\n🛑 Terminate requested...';
+    write('\n\n🛑 Terminate requested...');
   });
 
   // Kill button
   killBtn.addEventListener('click', () => {
     if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
     model.send('kill_process');
-    output.textContent += '\n\n❌ Kill requested...';
+    write('\n\n❌ Kill requested...');
   });
 
-// Handle output updates (best option: robust states + feedback)
-model.on('msg:custom', (msg) => {
-  switch (msg.type) {
-    case 'started':
-      // Process just started: enable/disable controls accordingly and show header
-      runBtn.disabled = true;
-      terminateBtn.disabled = false;
-      killBtn.disabled = false;
-      output.textContent += `Started in (pid=${msg.pid}${msg.pgid ? `, pgid=${msg.pgid}` : ''})\n\n`;
-      output.scrollTop = output.scrollHeight;
-      break;
+  // Handle output updates (best option: robust states + feedback)
+  model.on('msg:custom', (msg) => {
+    switch (msg.type) {
+      case 'started':
+        // Process just started: enable/disable controls accordingly and show header
+        runBtn.disabled = true;
+        terminateBtn.disabled = false;
+        killBtn.disabled = false;
+        write(`Started in (pid=${msg.pid}${msg.pgid ? `, pgid=${msg.pgid}` : ''})\n\n`);
+        break;
 
-    case 'output':
-      output.textContent += msg.data;
-      output.scrollTop = output.scrollHeight;
-      break;
+      case 'output':
+        write(msg.data); // realtime streaming
+        break;
 
-    case 'terminated':
-      // Process terminated via SIGTERM
-      terminateBtn.disabled = true;
-      killBtn.disabled = true;
-      runBtn.disabled = false;
-      runBtn.style.background = '#007acc';
-      updateButtonText();
-      output.textContent += '\n\n🛑 Process terminated (SIGTERM)';
-      break;
+      case 'terminated':
+        // Process terminated via SIGTERM
+        terminateBtn.disabled = true;
+        killBtn.disabled = true;
+        runBtn.disabled = false;
+        runBtn.style.background = '#007acc';
+        updateButtonText();
+        write('\n\n🛑 Process terminated (SIGTERM)');
+        break;
 
-    case 'killed':
-      // Process killed via SIGKILL
-      terminateBtn.disabled = true;
-      killBtn.disabled = true;
-      runBtn.disabled = false;
-      runBtn.style.background = '#007acc';
-      updateButtonText();
-      output.textContent += '\n\n❌ Process killed (SIGKILL)';
-      break;
+      case 'killed':
+        // Process killed via SIGKILL
+        terminateBtn.disabled = true;
+        killBtn.disabled = true;
+        runBtn.disabled = false;
+        runBtn.style.background = '#007acc';
+        updateButtonText();
+        write('\n\n❌ Process killed (SIGKILL)');
+        break;
 
-    case 'completed':
-      // Natural completion
-      terminateBtn.disabled = true;
-      killBtn.disabled = true;
-      runBtn.disabled = false;
-      runBtn.style.background = '#007acc';
-      updateButtonText();
-      {
-        const statusMsg =
-          msg.returncode === 0
-            ? '\n\n✅ Process completed successfully'
-            : `\n\n❌ Process exited with code ${msg.returncode}`;
-        output.textContent += statusMsg;
-      }
-      break;
+      case 'completed':
+        // Natural completion
+        terminateBtn.disabled = true;
+        killBtn.disabled = true;
+        runBtn.disabled = false;
+        runBtn.style.background = '#007acc';
+        updateButtonText();
+        {
+          const statusMsg =
+            msg.returncode === 0
+              ? '\n\n✅ Process completed successfully'
+              : `\n\n❌ Process exited with code ${msg.returncode}`;
+          write(statusMsg);
+        }
+        break;
 
-
-    case 'error':
-      // Error path
-      terminateBtn.disabled = true;
-      killBtn.disabled = true;
-      runBtn.disabled = false;
-      runBtn.style.background = '#d73a49';
-      updateButtonText();
-      output.textContent += `\n\n💥 Error: ${msg.error}`;
-      break;
-  }
-
-
-  // Always keep the output scrolled to bottom
-  output.scrollTop = output.scrollHeight;
-});
+      case 'error':
+        // Error path
+        terminateBtn.disabled = true;
+        killBtn.disabled = true;
+        runBtn.disabled = false;
+        runBtn.style.background = '#d73a49';
+        updateButtonText();
+        write(`\n\n💥 Error: ${msg.error}`);
+        break;
+    }
+  });
 
   // Update button text when command changes
   model.on('change:command', updateButtonText);
