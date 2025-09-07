@@ -9,6 +9,7 @@ function render({ model, el }) {
   const killBtn = document.createElement('button');
 
   const toolbar = document.createElement('div');
+  const runIconBtn = document.createElement('button');       // NEW: compact run button (top-right bar)
   const menuBtn = document.createElement('button');
   const menuPanel = document.createElement('div');
   const terminalWrapper = document.createElement('div');
@@ -23,8 +24,23 @@ function render({ model, el }) {
     right: 0px;        /* keep it in the top-right corner */
     display: inline-flex;
     align-items: center;
+    gap: 6px;          /* NEW: small space between run icon and hamburger */
     z-index: 2;         /* above terminal content */
   `;
+  // NEW: compact run icon button (same footprint as hamburger)
+  runIconBtn.type = 'button';
+  runIconBtn.setAttribute('aria-label', 'Run command');
+  runIconBtn.textContent = '▶';
+  runIconBtn.style.cssText = `
+    background:#007acc;color:#fff;border:none;
+    width:28px;height:28px; /* same size as hamburger */
+    padding:0; border-radius:8px;
+    cursor:pointer;font-size:14px;line-height:1;
+    display:inline-flex;align-items:center;justify-content:center;
+    transition: background-color 0.2s ease;
+  `;
+  runIconBtn.onmouseover = () => (runIconBtn.style.background = '#005a9e');
+  runIconBtn.onmouseout  = () => (runIconBtn.style.background = '#007acc');
 
   menuBtn.type = 'button';
   menuBtn.setAttribute('aria-haspopup', 'menu');
@@ -104,7 +120,23 @@ function render({ model, el }) {
   inputWrapper.appendChild(sendBtn);
 
   // mount toolbar (panel vacío por ahora)
+  toolbar.appendChild(runIconBtn);  // NEW: place run icon to the left
   toolbar.appendChild(menuBtn);
+  // NEW: Run icon button (mirrors the run action)
+  runIconBtn.addEventListener('click', () => {
+    // Avoid duplicate runs
+    if (runBtn.disabled) return;
+    if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
+    // Mirror run button disabled/visual state
+    runBtn.disabled = true;
+    runBtn.textContent = '⏳ Running...';
+    runBtn.style.background = '#666';
+    runIconBtn.disabled = true;
+    runIconBtn.style.background = '#666';
+    // Prime terminal output and execute
+    output.textContent = `$ ${model.get('command')}` + '\n';
+    model.send('execute_command');
+  });
   toolbar.appendChild(menuPanel);
 
   // Styling
@@ -316,8 +348,10 @@ function render({ model, el }) {
         // Process terminated via SIGTERM
         terminateBtn.disabled = true;
         killBtn.disabled = true;
-        runBtn.disabled = false;
-        runBtn.style.background = '#007acc';
+  runBtn.disabled = false;
+  runBtn.style.background = '#007acc';
+  runIconBtn.disabled = false;                 // NEW: re-enable icon button
+  runIconBtn.style.background = '#007acc';
         updateButtonText();
         write('\n\n🛑 Process terminated (SIGTERM)');
         break;
@@ -326,8 +360,10 @@ function render({ model, el }) {
         // Process killed via SIGKILL
         terminateBtn.disabled = true;
         killBtn.disabled = true;
-        runBtn.disabled = false;
-        runBtn.style.background = '#007acc';
+  runBtn.disabled = false;
+  runBtn.style.background = '#007acc';
+  runIconBtn.disabled = false;                 // NEW: re-enable icon button
+  runIconBtn.style.background = '#007acc';
         updateButtonText();
         write('\n\n❌ Process killed (SIGKILL)');
         break;
@@ -336,8 +372,10 @@ function render({ model, el }) {
         // Natural completion
         terminateBtn.disabled = true;
         killBtn.disabled = true;
-        runBtn.disabled = false;
-        runBtn.style.background = '#007acc';
+  runBtn.disabled = false;
+  runBtn.style.background = '#007acc';
+  runIconBtn.disabled = false;                 // NEW: re-enable icon button
+  runIconBtn.style.background = '#007acc';
         updateButtonText();
         {
           const statusMsg =
@@ -352,8 +390,10 @@ function render({ model, el }) {
         // Error path
         terminateBtn.disabled = true;
         killBtn.disabled = true;
-        runBtn.disabled = false;
-        runBtn.style.background = '#d73a49';
+  runBtn.disabled = false;
+  runBtn.style.background = '#d73a49';
+  runIconBtn.disabled = false;                 // NEW: re-enable icon button
+  runIconBtn.style.background = '#007acc';
         updateButtonText();
         write(`\n\n💥 Error: ${msg.error}`);
         break;
