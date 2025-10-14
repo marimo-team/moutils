@@ -9,6 +9,6 @@ marimo==0.14.11
 moutils
 nbformat==5.10.4
 pandas==2.2.3
-polars==1.27.1
+polars==1.31.0
 pyyaml==6.0.2
 requests==2.32.4
