@@ -72,6 +72,67 @@
       console.log("OAuth callback handler loaded");
       console.log("URL search params:", window.location.search);
       
+      /**
+       * Check if a URL is to a potentially untrusted external domain
+       * @param {string} url - The URL to check
+       * @returns {boolean} - True if the URL is to an external domain that might be untrusted
+       */
+      function isExternalDomain(url) {
+        try {
+          const urlObj = new URL(url);
+          const currentOrigin = window.location.origin;
+          
+          // Same origin is always trusted
+          if (urlObj.origin === currentOrigin) {
+            return false;
+          }
+          
+          // Known trusted domains (Cloudflare + localhost for development)
+          const trustedDomains = [
+            'cloudflare.com',
+            'notebooks.cloudflare.com',
+            'dash.cloudflare.com',
+            'pages.dev', // For Cloudflare Pages
+            'localhost' // For local development
+          ];
+          
+          const hostname = urlObj.hostname.toLowerCase();
+          
+          // Check if it's a trusted domain or subdomain
+          for (const domain of trustedDomains) {
+            if (hostname === domain || hostname.endsWith('.' + domain)) {
+              return false; // Trusted domain
+            }
+          }
+          
+          return true; // External/untrusted domain
+        } catch (error) {
+          console.error('Error parsing URL:', error);
+          return true; // Treat invalid URLs as external
+        }
+      }
+      
+      /**
+       * Safely redirect while protecting access tokens from leakage
+       * @param {string} url - The URL to redirect to
+       */
+      function safeRedirect(url) {
+        if (isExternalDomain(url)) {
+          console.warn('Redirecting to external domain - clearing sensitive localStorage data:', url);
+          // Clear access tokens before redirecting to external domains
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.includes('token') || key.includes('auth') || key.includes('pkce'))) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(key => localStorage.removeItem(key));
+        }
+        
+        window.location.href = url;
+      }
+      
       try {
         // Handle OAuth callback - check for callback parameters on page load
         if (window.location.search.indexOf("code") !== -1) {
@@ -168,13 +229,13 @@
                   } else {
                     console.log("Not a popup window, redirecting instead...");
                     console.log("Redirecting to:", redirectUrl.toString());
-                    window.location.href = redirectUrl.toString();
+                    safeRedirect(redirectUrl.toString());
                   }
                 } catch (closeError) {
                   console.error("Error closing window:", closeError);
                   // If we can't close the window, redirect instead
                   console.log("Redirecting instead of closing...");
-                  window.location.href = redirectUrl.toString();
+                  safeRedirect(redirectUrl.toString());
                 }
               }, 1000); // Increased timeout to 1 second for debugging
             } catch (error) {
