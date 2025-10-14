@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 import asyncio
 import sys
+import os
+import signal
 
 import anywidget
 import traitlets
@@ -376,20 +378,27 @@ class ShellWidget(anywidget.AnyWidget):
     command = traitlets.Unicode("").tag(sync=True)
     working_directory = traitlets.Unicode(".").tag(sync=True)
 
-    def __init__(self, command: str, working_directory: str = "."):
+    def __init__(self, command: str, working_directory: str = ".", run: bool = False):
         super().__init__()
         self.command = command
         self.working_directory = working_directory
         self.on_msg(self._handle_msg)
+        self._process = None
+        self._pgid = None
+        self._master_fd = None
+        self._slave_fd = None
+        self._reader_task = None
+        self._reader_installed = False
+
+        # Auto-run if parameter is True
+        if run:
+            self.run()
 
     def _handle_msg(self, widget, content, buffers):
         if content == "execute_command":
-            # Handle async execution properly in Jupyter
             if hasattr(asyncio, "current_task") and asyncio.current_task():
-                # We're already in an async context
                 asyncio.create_task(self._execute_command_async())
             else:
-                # Create new event loop if needed
                 try:
                     loop = asyncio.get_event_loop()
                     if loop.is_running():
@@ -397,52 +406,178 @@ class ShellWidget(anywidget.AnyWidget):
                     else:
                         loop.run_until_complete(self._execute_command_async())
                 except RuntimeError:
-                    # Fallback for environments without event loop
                     asyncio.run(self._execute_command_async())
 
-    async def _execute_command_async(self):
-        """Execute the shell command asynchronously and stream output."""
-        try:
-            # Determine shell based on platform
-            shell = "/bin/bash" if sys.platform != "win32" else "cmd"
-            shell_args = ["-c"] if sys.platform != "win32" else ["/c"]
+        elif content == "terminate_process":
+            self.terminate()
 
-            # Create async subprocess
-            process = await asyncio.create_subprocess_exec(
+        elif content == "kill_process":
+            self.kill()
+
+        elif isinstance(content, dict) and content.get("type") == "input":
+            asyncio.create_task(self._send_input(content.get("data", "")))
+
+    async def _execute_command_async(self):
+        """Execute the shell command asynchronously using a PTY to support interactive input."""
+        try:
+            if sys.platform == "win32":
+                raise RuntimeError("PTY-based shell not supported on Windows")
+
+            shell = "/bin/bash"
+            shell_args = ["-c", self.command]
+
+            self._master_fd, self._slave_fd = os.openpty()
+            loop = asyncio.get_event_loop()
+
+            # Spawn the child process
+            self._process = await asyncio.create_subprocess_exec(
                 shell,
                 *shell_args,
-                self.command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
                 cwd=self.working_directory,
+                stdin=self._slave_fd,
+                stdout=self._slave_fd,
+                stderr=self._slave_fd,
+                start_new_session=True,
             )
 
-            # Stream output
-            while True:
-                chunk = await process.stdout.read(1024)
-                if not chunk:
-                    break
+            # POSIX: start_new_session=True → child's PGID == child's PID.
+            pid = self._process.pid
+            self._pgid = pid
+            self.send({"type": "started", "pid": pid, "pgid": self._pgid})
+            self.send({"type": "output", "data": f"$ {self.command}\n"})
 
+            # Register reader AFTER spawning the child (simple, unified behavior)
+            def _remove_reader_safely():
+                if self._reader_installed:
+                    try:
+                        loop.remove_reader(self._master_fd)
+                    except Exception:
+                        pass
+                    self._reader_installed = False
+
+            def _on_master_readable():
+                """Pump PTY output; suppress benign OSErrors when process exits."""
                 try:
-                    decoded_chunk = chunk.decode("utf-8", errors="replace")
-                except UnicodeDecodeError:
-                    decoded_chunk = chunk.decode("latin-1", errors="replace")
+                    data = os.read(self._master_fd, 1024)
+                    if not data:
+                        _remove_reader_safely()
+                        return
+                    self.send({"type": "output", "data": data.decode("utf-8", errors="replace")})
+                except OSError:
+                    # Treat read errors after process exit as EOF without surfacing an error.
+                    _remove_reader_safely()
+                except Exception as e:
+                    self.send({"type": "error", "error": str(e)})
+                    _remove_reader_safely()
 
-                self.send({"type": "output", "data": decoded_chunk})
+            try:
+                loop.add_reader(self._master_fd, _on_master_readable)
+                self._reader_installed = True
+            except NotImplementedError:
+                async def _fallback_reader():
+                    try:
+                        while True:
+                            data = await loop.run_in_executor(None, os.read, self._master_fd, 1024)
+                            if not data:
+                                break
+                            self.send({"type": "output", "data": data.decode("utf-8", errors="replace")})
+                    except Exception:
+                        # Suppress benign errors when process has already exited
+                        pass
+                self._reader_task = asyncio.create_task(_fallback_reader())
 
-            # Wait for completion
-            return_code = await process.wait()
+            return_code = await self._process.wait()
+            # Optionally wait for fallback reader if it was used
+            if self._reader_task:
+                try:
+                    await self._reader_task
+                except Exception:
+                    pass
             self.send({"type": "completed", "returncode": return_code})
 
         except Exception as e:
             self.send({"type": "error", "error": str(e)})
+        finally:
+            # Remove reader (if still installed) and close fds
+            try:
+                if self._reader_installed and self._master_fd is not None:
+                    loop = asyncio.get_event_loop()
+                    loop.remove_reader(self._master_fd)
+            except Exception:
+                pass
+            self._reader_installed = False
+            if self._master_fd:
+                try:
+                    os.close(self._master_fd)
+                except Exception:
+                    pass
+            if self._slave_fd:
+                try:
+                    os.close(self._slave_fd)
+                except Exception:
+                    pass
+            self._process = None
+            self._pgid = None
+            self._master_fd = None
+            self._slave_fd = None
+            self._reader_task = None
+
+    async def _send_input(self, text: str):
+        if self._process and self._master_fd:
+            os.write(self._master_fd, text.encode() + b"\n")
+            self.send({"type": "input_sent", "data": text})
+
+    def run(self):
+        """Public method to start execution without frontend button."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self._execute_command_async())
+            else:
+                loop.run_until_complete(self._execute_command_async())
+
+        except RuntimeError:
+            asyncio.run(self._execute_command_async())
+        
+        except Exception as e:
+            self.send({"type": "error", "error": str(e)})
+
+
+    def terminate(self):
+        """Send SIGTERM to the process group (all children)."""
+        if not self._process or self._process.returncode is not None:
+            self.send({"type": "not_running"})
+            return
+        try:
+            if self._pgid:
+                os.killpg(self._pgid, signal.SIGTERM)
+            else:
+                self._process.terminate()
+            self.send({"type": "terminated"})
+        except Exception as e:
+            self.send({"type": "error", "error": f"Terminate failed: {e}"})
+
+
+    def kill(self):
+        """Send SIGKILL to the process group (all children)."""
+        if not self._process or self._process.returncode is not None:
+            self.send({"type": "not_running"})
+            return
+        try:
+            if self._pgid:
+                os.killpg(self._pgid, signal.SIGKILL)
+            else:
+                self._process.kill()
+            self.send({"type": "killed"})
+        except Exception as e:
+            self.send({"type": "error", "error": f"Kill failed: {e}"})
 
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)
         return _wrap_marimo(instance, *args, **kwargs)
 
 
-def shell(command: str, working_directory: str = ".") -> ShellWidget:
+def shell(command: str, working_directory: str = ".", run: bool = False) -> ShellWidget:
     """
     Create a shell command widget.
 
@@ -459,7 +594,7 @@ def shell(command: str, working_directory: str = ".") -> ShellWidget:
         shell("find . -name '*.py' | head -10")
         shell("npm install", working_directory="./frontend")
     """
-    return ShellWidget(command, working_directory)
+    return ShellWidget(command, working_directory, run=run)
 
 
 class CopyToClipboard(anywidget.AnyWidget):
