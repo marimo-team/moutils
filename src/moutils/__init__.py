@@ -32,6 +32,14 @@ __all__ = [
     "CopyToClipboard",
     "ShellWidget",
     "shell",
+    "ColorScheme",
+    "ViewportSize",
+    "OnlineStatus",
+    "PageVisibility",
+    "Geolocation",
+    "CameraCapture",
+    "Notification",
+    "KeyboardShortcut",
 ]
 
 
@@ -637,3 +645,108 @@ class CopyToClipboard(anywidget.AnyWidget):
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)
         return _wrap_marimo(instance, *args, **kwargs)
+
+
+class ColorScheme(anywidget.AnyWidget):
+    """Widget for detecting the user's preferred color scheme (light/dark mode)."""
+
+    _esm = Path(__file__).parent / "static" / "colorscheme.js"
+    scheme = traitlets.Unicode("light").tag(sync=True)
+    prefers_dark = traitlets.Bool(False).tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
+
+
+class ViewportSize(anywidget.AnyWidget):
+    """Widget for detecting window/viewport dimensions."""
+
+    _esm = Path(__file__).parent / "static" / "viewport.js"
+    width = traitlets.Int(0).tag(sync=True)
+    height = traitlets.Int(0).tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
+
+
+class OnlineStatus(anywidget.AnyWidget):
+    """Widget for detecting network connectivity status."""
+
+    _esm = Path(__file__).parent / "static" / "online.js"
+    online = traitlets.Bool(True).tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
+
+
+class PageVisibility(anywidget.AnyWidget):
+    """Widget for detecting if the browser tab is active."""
+
+    _esm = Path(__file__).parent / "static" / "visibility.js"
+    visible = traitlets.Bool(True).tag(sync=True)
+    state = traitlets.Unicode("visible").tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
+
+
+class Geolocation(anywidget.AnyWidget):
+    """Widget for getting the user's geographic coordinates."""
+
+    _esm = Path(__file__).parent / "static" / "geolocation.js"
+    latitude = traitlets.Float(0.0).tag(sync=True)
+    longitude = traitlets.Float(0.0).tag(sync=True)
+    accuracy = traitlets.Float(0.0).tag(sync=True)
+    error = traitlets.Unicode("").tag(sync=True)
+    enabled = traitlets.Bool(False).tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
+
+
+class CameraCapture(anywidget.AnyWidget):
+    """Widget for capturing a still image from the webcam."""
+
+    _esm = Path(__file__).parent / "static" / "camera.js"
+    _css = Path(__file__).parent / "static" / "camera.css"
+    image_data = traitlets.Unicode("").tag(sync=True)
+    width = traitlets.Int(640).tag(sync=True)
+    height = traitlets.Int(480).tag(sync=True)
+    enabled = traitlets.Bool(False).tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
+
+
+class Notification(anywidget.AnyWidget):
+    """Widget for sending browser notifications."""
+
+    _esm = Path(__file__).parent / "static" / "notification.js"
+    title = traitlets.Unicode("").tag(sync=True)
+    body = traitlets.Unicode("").tag(sync=True)
+    icon = traitlets.Unicode("").tag(sync=True)
+    permission = traitlets.Unicode("default").tag(sync=True)
+    send = traitlets.Bool(False).tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
+
+
+class KeyboardShortcut(anywidget.AnyWidget):
+    """Widget for listening to global keyboard shortcuts."""
+
+    _esm = Path(__file__).parent / "static" / "keyboard.js"
+    shortcut = traitlets.Unicode("").tag(sync=True)
+    pressed = traitlets.Bool(False).tag(sync=True)
+    event = traitlets.Dict({}).tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
