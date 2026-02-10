@@ -1,0 +1,35 @@
+.moutils-camera {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.moutils-camera video {
+  max-width: 100%;
+  border-radius: 4px;
+  background: #000;
+}
+
+.moutils-camera-btn {
+  padding: 6px 16px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.moutils-camera-btn:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.moutils-camera-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.moutils-camera-status {
+  color: #c00;
+  font-size: 13px;
+}
