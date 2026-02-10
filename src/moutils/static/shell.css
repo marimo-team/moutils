@@ -1,0 +1,233 @@
+/* === Dark theme (default — no media query, always dark) === */
+.shell-widget {
+  --sh-bg: #0f1115;
+  --sh-surface: #1a1d23;
+  --sh-border: rgba(255, 255, 255, 0.08);
+  --sh-text: #c9d1d9;
+  --sh-text-dim: #484f58;
+  --sh-accent: #4c9aff;
+  --sh-danger: #e5534b;
+  --sh-success: #3fb950;
+  --sh-glass: rgba(255, 255, 255, 0.06);
+  --sh-glass-hover: rgba(255, 255, 255, 0.12);
+  --sh-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --sh-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Menlo, monospace;
+}
+
+/* === Light — only via explicit data-theme="light" === */
+.shell-widget[data-theme="light"] {
+  --sh-bg: #f6f8fa;
+  --sh-surface: #ffffff;
+  --sh-border: rgba(0, 0, 0, 0.1);
+  --sh-text: #1f2328;
+  --sh-text-dim: #656d76;
+  --sh-accent: #0969da;
+  --sh-danger: #cf222e;
+  --sh-success: #1a7f37;
+  --sh-glass: rgba(0, 0, 0, 0.05);
+  --sh-glass-hover: rgba(0, 0, 0, 0.1);
+  --sh-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* === Terminal === */
+.shell-terminal {
+  position: relative;
+}
+
+.shell-output {
+  background: var(--sh-bg);
+  color: var(--sh-text);
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-family: var(--sh-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  border: 1px solid var(--sh-border);
+  min-height: 48px;
+  margin: 0;
+}
+
+.shell-output::-webkit-scrollbar { width: 6px; }
+.shell-output::-webkit-scrollbar-track { background: transparent; }
+.shell-output::-webkit-scrollbar-thumb {
+  background: var(--sh-text-dim);
+  border-radius: 3px;
+}
+
+/* === Toolbar === */
+.shell-toolbar {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  z-index: 2;
+}
+
+/* === Toolbar icon buttons === */
+.shell-btn {
+  border: 1px solid var(--sh-border);
+  background: var(--sh-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--sh-text);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, transform 0.1s, filter 0.15s, opacity 0.15s;
+}
+
+.shell-btn:hover:not(:disabled) {
+  background: var(--sh-glass-hover);
+}
+
+.shell-btn:active:not(:disabled) {
+  transform: scale(0.88);
+}
+
+.shell-btn:focus-visible {
+  outline: 2px solid var(--sh-accent);
+  outline-offset: 1px;
+}
+
+.shell-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
+.shell-btn-run {
+  background: var(--sh-accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+.shell-btn-run:hover:not(:disabled) {
+  background: var(--sh-accent);
+  filter: brightness(1.2);
+}
+
+.shell-btn-menu {
+  font-size: 14px;
+}
+
+/* === Menu panel === */
+.shell-menu {
+  position: fixed;
+  background: var(--sh-surface);
+  border: 1px solid var(--sh-border);
+  border-radius: 10px;
+  padding: 4px;
+  min-width: 200px;
+  box-shadow: var(--sh-shadow);
+  z-index: 1000;
+  overflow: visible;
+}
+
+/* === Menu items === */
+.shell-menu-item {
+  display: block;
+  width: 100%;
+  background: transparent;
+  color: var(--sh-text);
+  border: none;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--sh-mono);
+  font-size: 12px;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+  box-sizing: border-box;
+}
+
+.shell-menu-item:hover:not(:disabled) {
+  background: var(--sh-glass-hover);
+}
+
+.shell-menu-item:active:not(:disabled) {
+  background: var(--sh-glass);
+}
+
+.shell-menu-item:focus-visible {
+  outline: 2px solid var(--sh-accent);
+  outline-offset: -2px;
+}
+
+.shell-menu-item:disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Hover color tints */
+.shell-btn-terminate:hover:not(:disabled) { color: var(--sh-accent); }
+.shell-btn-kill:hover:not(:disabled) { color: var(--sh-danger); }
+
+/* === Menu separator === */
+.shell-menu-sep {
+  height: 1px;
+  background: var(--sh-border);
+  margin: 3px 4px;
+}
+
+/* === Input row === */
+.shell-input-row {
+  display: flex;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.shell-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--sh-border);
+  font-size: 11px;
+  font-family: var(--sh-mono);
+  background: var(--sh-bg);
+  color: var(--sh-text);
+  transition: border-color 0.15s;
+}
+
+.shell-input:focus {
+  outline: none;
+  border-color: var(--sh-accent);
+}
+
+.shell-input::placeholder {
+  color: var(--sh-text-dim);
+}
+
+/* Send — compact inline button, not a full menu item */
+.shell-btn-send {
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--sh-text-dim);
+  border: 1px solid var(--sh-border);
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--sh-mono);
+  font-size: 11px;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.shell-btn-send:hover {
+  color: var(--sh-success);
+  border-color: var(--sh-success);
+  background: var(--sh-glass);
+}
