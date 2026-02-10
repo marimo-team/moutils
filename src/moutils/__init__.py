@@ -4,13 +4,13 @@ This module provides various widgets for interacting with browser features like 
 cookies, and DOM elements in marimo notebooks.
 """
 
-import importlib.metadata
-from pathlib import Path
-from typing import Any, Callable, Dict, Optional
 import asyncio
-import sys
+import importlib.metadata
 import os
 import signal
+import sys
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional
 
 import anywidget
 import traitlets
@@ -375,14 +375,17 @@ class ShellWidget(anywidget.AnyWidget):
     """Interactive shell command widget for Jupyter notebooks."""
 
     _esm = Path(__file__).parent / "static" / "shell.js"
+    _css = Path(__file__).parent / "static" / "shell.css"
     command = traitlets.Unicode("").tag(sync=True)
     working_directory = traitlets.Unicode(".").tag(sync=True)
+    theme = traitlets.Unicode("dark").tag(sync=True)
 
-    def __init__(self, command: str, working_directory: str = ".", run: bool = False):
+    def __init__(self, command: str, working_directory: str = ".", run: bool = False, theme: str = "dark"):
         super().__init__()
         self.command = command
         self.working_directory = working_directory
-        self.on_msg(self._handle_msg)
+        self.theme = theme
+        self.on_msg(self._handle_custom_msg)
         self._process = None
         self._pgid = None
         self._master_fd = None
@@ -394,28 +397,40 @@ class ShellWidget(anywidget.AnyWidget):
         if run:
             self.run()
 
-    def _handle_msg(self, widget, content, buffers):
-        if content == "execute_command":
-            if hasattr(asyncio, "current_task") and asyncio.current_task():
-                asyncio.create_task(self._execute_command_async())
-            else:
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        asyncio.create_task(self._execute_command_async())
-                    else:
-                        loop.run_until_complete(self._execute_command_async())
-                except RuntimeError:
-                    asyncio.run(self._execute_command_async())
+    def _handle_custom_msg(self, data: dict, buffers: list):
+        """Handle a custom message from the frontend.
 
-        elif content == "terminate_process":
+        Messages arrive as plain dicts — model.send({ type: "execute" })
+        on the JS side lands here with data = {"type": "execute"}.
+        """
+        msg_type = data.get("type", "")
+
+        if msg_type == "execute":
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self._execute_command_async())
+                else:
+                    loop.run_until_complete(self._execute_command_async())
+            except RuntimeError:
+                asyncio.run(self._execute_command_async())
+
+        elif msg_type == "terminate":
             self.terminate()
 
-        elif content == "kill_process":
+        elif msg_type == "kill":
             self.kill()
 
-        elif isinstance(content, dict) and content.get("type") == "input":
-            asyncio.create_task(self._send_input(content.get("data", "")))
+        elif msg_type == "input":
+            text = data.get("data", "")
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(self._send_input(text))
+                else:
+                    loop.run_until_complete(self._send_input(text))
+            except RuntimeError:
+                asyncio.run(self._send_input(text))
 
     async def _execute_command_async(self):
         """Execute the shell command asynchronously using a PTY to support interactive input."""
@@ -462,7 +477,12 @@ class ShellWidget(anywidget.AnyWidget):
                     if not data:
                         _remove_reader_safely()
                         return
-                    self.send({"type": "output", "data": data.decode("utf-8", errors="replace")})
+                    self.send(
+                        {
+                            "type": "output",
+                            "data": data.decode("utf-8", errors="replace"),
+                        }
+                    )
                 except OSError:
                     # Treat read errors after process exit as EOF without surfacing an error.
                     _remove_reader_safely()
@@ -474,16 +494,25 @@ class ShellWidget(anywidget.AnyWidget):
                 loop.add_reader(self._master_fd, _on_master_readable)
                 self._reader_installed = True
             except NotImplementedError:
+
                 async def _fallback_reader():
                     try:
                         while True:
-                            data = await loop.run_in_executor(None, os.read, self._master_fd, 1024)
+                            data = await loop.run_in_executor(
+                                None, os.read, self._master_fd, 1024
+                            )
                             if not data:
                                 break
-                            self.send({"type": "output", "data": data.decode("utf-8", errors="replace")})
+                            self.send(
+                                {
+                                    "type": "output",
+                                    "data": data.decode("utf-8", errors="replace"),
+                                }
+                            )
                     except Exception:
                         # Suppress benign errors when process has already exited
                         pass
+
                 self._reader_task = asyncio.create_task(_fallback_reader())
 
             return_code = await self._process.wait()
@@ -538,10 +567,9 @@ class ShellWidget(anywidget.AnyWidget):
 
         except RuntimeError:
             asyncio.run(self._execute_command_async())
-        
+
         except Exception as e:
             self.send({"type": "error", "error": str(e)})
-
 
     def terminate(self):
         """Send SIGTERM to the process group (all children)."""
@@ -556,7 +584,6 @@ class ShellWidget(anywidget.AnyWidget):
             self.send({"type": "terminated"})
         except Exception as e:
             self.send({"type": "error", "error": f"Terminate failed: {e}"})
-
 
     def kill(self):
         """Send SIGKILL to the process group (all children)."""
@@ -577,13 +604,14 @@ class ShellWidget(anywidget.AnyWidget):
         return _wrap_marimo(instance, *args, **kwargs)
 
 
-def shell(command: str, working_directory: str = ".", run: bool = False) -> ShellWidget:
+def shell(command: str, working_directory: str = ".", run: bool = False, theme: str = "dark") -> ShellWidget:
     """
     Create a shell command widget.
 
     Args:
         command: The shell command to execute
         working_directory: Directory to run the command in (defaults to current directory)
+        theme: Color theme — "dark" (default) or "light"
 
     Returns:
         ShellWidget: An interactive widget with a button to run the command
@@ -594,7 +622,7 @@ def shell(command: str, working_directory: str = ".", run: bool = False) -> Shel
         shell("find . -name '*.py' | head -10")
         shell("npm install", working_directory="./frontend")
     """
-    return ShellWidget(command, working_directory, run=run)
+    return ShellWidget(command, working_directory, run=run, theme=theme)
 
 
 class CopyToClipboard(anywidget.AnyWidget):

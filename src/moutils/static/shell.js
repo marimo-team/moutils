@@ -1,407 +1,214 @@
-// shell.js — streaming output to a <pre> with rAF batching
-// All comments in English.
+// shell.js — interactive shell widget with rAF-batched streaming output
 
 function render({ model, el }) {
-  const container = document.createElement('div');
-  const runBtn = document.createElement('button');
-  const output = document.createElement('pre');
-  const terminateBtn = document.createElement('button');
-  const killBtn = document.createElement('button');
+  // === Build DOM ===
+  const container = document.createElement("div");
+  container.className = "shell-widget";
+  container.dataset.theme = model.get("theme") || "dark";
 
-  const toolbar = document.createElement('div');
-  const runIconBtn = document.createElement('button');       // NEW: compact run button (top-right bar)
-  const menuBtn = document.createElement('button');
-  const menuPanel = document.createElement('div');
-  const terminalWrapper = document.createElement('div');
+  const terminal = document.createElement("div");
+  terminal.className = "shell-terminal";
 
-  // a11y + base UI
-  terminalWrapper.style.cssText = `
-    position: relative; /* anchors toolbar absolutely without taking space */
-  `;
-  toolbar.style.cssText = `
-    position: absolute; /* overlay inside the terminal */
-    top: 0px;          /* lower the button inside the terminal */
-    right: 0px;        /* keep it in the top-right corner */
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;          /* NEW: small space between run icon and hamburger */
-    z-index: 2;         /* above terminal content */
-  `;
-  // NEW: compact run icon button (same footprint as hamburger)
-  runIconBtn.type = 'button';
-  runIconBtn.setAttribute('aria-label', 'Run command');
-  runIconBtn.textContent = '▶';
-  runIconBtn.style.cssText = `
-    background:#007acc;color:#fff;border:none;
-    width:28px;height:28px; /* same size as hamburger */
-    padding:0; border-radius:8px;
-    cursor:pointer;font-size:14px;line-height:1;
-    display:inline-flex;align-items:center;justify-content:center;
-    transition: background-color 0.2s ease;
-  `;
-  runIconBtn.onmouseover = () => (runIconBtn.style.background = '#005a9e');
-  runIconBtn.onmouseout  = () => (runIconBtn.style.background = '#007acc');
+  const output = document.createElement("pre");
+  output.className = "shell-output";
 
-  menuBtn.type = 'button';
-  menuBtn.setAttribute('aria-haspopup', 'menu');
-  menuBtn.setAttribute('aria-label', 'Toggle command menu');
-  menuBtn.textContent = '☰';
+  // Toolbar (overlays top-right of terminal)
+  const toolbar = document.createElement("div");
+  toolbar.className = "shell-toolbar";
 
-  menuBtn.style.cssText = `
-    background:#2d2d2d;color:#fff;border:none;
-    width:28px;height:28px; /* compact */
-    padding:0; border-radius:8px;
-    cursor:pointer;font-size:14px;line-height:1;
-    display:inline-flex;align-items:center;justify-content:center;
-  `;
+  const runIconBtn = document.createElement("button");
+  runIconBtn.className = "shell-btn shell-btn-run";
+  runIconBtn.textContent = "\u25B6";
+  runIconBtn.setAttribute("aria-label", "Run command");
 
-  menuBtn.onmouseover = () => (menuBtn.style.background = '#444');
-  menuBtn.onmouseout  = () => (menuBtn.style.background = '#2d2d2d');
+  const menuBtn = document.createElement("button");
+  menuBtn.className = "shell-btn shell-btn-menu";
+  menuBtn.textContent = "\u2630";
+  menuBtn.setAttribute("aria-haspopup", "menu");
+  menuBtn.setAttribute("aria-label", "Toggle command menu");
 
-  // Make the panel a Popover (top layer avoids clipping/overflow)
-  menuPanel.setAttribute('popover', 'manual'); // manual to avoid reopen-on-click race
-  menuPanel.style.cssText = `
-    position: fixed;
-    background:#1f1f1f; border:1px solid #333; border-radius:10px;
-    padding:10px; min-width:200px; /* compact menu */
-    box-shadow:0 8px 24px rgba(0,0,0,.3);
-    z-index: 1000;
-  `;
+  // Dropdown menu panel
+  const menu = document.createElement("div");
+  menu.className = "shell-menu";
+  menu.setAttribute("popover", "manual");
 
-  // Input field and send button
-  const inputWrapper = document.createElement('div');
-  inputWrapper.style.cssText = 'display: flex; gap: 8px; margin-bottom: 8px;';
+  const menuRunBtn = document.createElement("button");
+  menuRunBtn.className = "shell-menu-item";
+  menuRunBtn.textContent = "\u25B6 Execute";
 
-  const inputField = document.createElement('input');
-  inputField.type = 'text';
-  inputField.placeholder = 'Send input to process...';
-  inputField.style.cssText = `
-    flex: 1;
-    padding: 6px 10px;
-    border-radius: 6px;
-    border: 1px solid #333;
-    font-size: 12px;
-    background: #222;
-    color: #fff;
-  `;
+  const sep = document.createElement("div");
+  sep.className = "shell-menu-sep";
 
-  const sendBtn = document.createElement('button');
-  sendBtn.textContent = 'Send';
-  sendBtn.style.cssText = `
-    background: #28a745;
-    color: white;
-    border: none;
-    padding: 6px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    font-family: 'SF Mono', monospace;
-    transition: background-color 0.2s ease;
-  `;
-  sendBtn.onmouseover = () => (sendBtn.style.background = '#218838');
-  sendBtn.onmouseout = () => (sendBtn.style.background = '#28a745');
+  const inputRow = document.createElement("div");
+  inputRow.className = "shell-input-row";
 
-  sendBtn.onclick = () => {
-    const text = inputField.value;
-    if (text.trim() !== "") {
-      model.send({type: "input", data: text});
-      inputField.value = "";
-    }
-  };
+  const inputField = document.createElement("input");
+  inputField.type = "text";
+  inputField.className = "shell-input";
+  inputField.placeholder = "stdin\u2026";
 
-  // Allow sending input with Enter key for better UX
-  inputField.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      sendBtn.click();
-    }
-  });
+  const sendBtn = document.createElement("button");
+  sendBtn.className = "shell-btn-send";
+  sendBtn.textContent = "Send";
 
-  inputWrapper.appendChild(inputField);
-  inputWrapper.appendChild(sendBtn);
+  const terminateBtn = document.createElement("button");
+  terminateBtn.className = "shell-menu-item shell-btn-terminate";
+  terminateBtn.textContent = "\uD83D\uDED1 Terminate";
 
-  // mount toolbar (panel vacío por ahora)
-  toolbar.appendChild(runIconBtn);  // NEW: place run icon to the left
-  toolbar.appendChild(menuBtn);
-  // NEW: Run icon button (mirrors the run action)
-  runIconBtn.addEventListener('click', () => {
-    // Avoid duplicate runs
-    if (runBtn.disabled) return;
-    if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
-    // Mirror run button disabled/visual state
-    runBtn.disabled = true;
-    runBtn.textContent = '⏳ Running...';
-    runBtn.style.background = '#666';
-    runIconBtn.disabled = true;
-    runIconBtn.style.background = '#666';
-    // Prime terminal output and execute
-    output.textContent = `$ ${model.get('command')}` + '\n';
-    model.send('execute_command');
-  });
-  toolbar.appendChild(menuPanel);
+  const killBtn = document.createElement("button");
+  killBtn.className = "shell-menu-item shell-btn-kill";
+  killBtn.textContent = "\u274C Kill";
 
-  // Styling
-  container.style.cssText = `
-        font-family: -apple-system,
-        BlinkMacSystemFont,
-        'Segoe UI',
-        Roboto, sans-serif;
-    `;
-
-  const styleButton = (btn, bg, hover) => {
-    btn.style.cssText = `
-      background: ${bg};
-      color: white;
-      border: none;
-      padding: 6px 14px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-family: 'SF Mono', monospace;
-      font-size: 12px;
-      margin-right: 8px;
-      margin-bottom: 12px;
-      transition: background-color 0.2s ease;
-    `;
-    btn.onmouseover = () => (btn.style.background = hover);
-    btn.onmouseout = () => (btn.style.background = bg);
-  };
-
-  styleButton(runBtn, '#007acc', '#005a9e');
-  styleButton(terminateBtn, '#253a97ff', '#152158ff');
-  styleButton(killBtn, '#d73a49', '#a52a32');
-
-  terminateBtn.textContent = '🛑 Terminate';
-  killBtn.textContent = '❌ Kill';
-
-  output.style.cssText = `
-        background: #1e1e1e;
-        color: #d4d4d4;
-        padding: 12px;
-        border-radius: 6px;
-        font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
-        font-size: 12px;
-        line-height: 1.4;
-        max-height: 400px;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        border: 1px solid #333;
-        min-height: 40px;
-    `;
-
-  // --- Realtime stream buffer (smooth UI updates) ---
-  // Buffer chunks, flush once per animation frame for smooth scrolling.
-  const _streamBuffer = [];
-  let _isFlushing = false;
-  function _flushNow() {
-    _isFlushing = false;
-    if (_streamBuffer.length === 0) return;
-    const chunk = _streamBuffer.join('');
-    _streamBuffer.length = 0;
-    output.textContent += chunk;
-    output.scrollTop = output.scrollHeight; // auto-scroll
-  }
-  function write(chunk) {
-    _streamBuffer.push(chunk);
-    if (!_isFlushing) {
-      _isFlushing = true;
-      requestAnimationFrame(_flushNow);
-    }
-  }
-
-  const updateButtonText = () => {
-    const cmd = model.get('command');
-    runBtn.textContent = `▶ Execute`;
-  };
-
-  updateButtonText();
-
-  const controls = document.createElement('div');
-  controls.appendChild(runBtn);
-  controls.appendChild(terminateBtn);
-  controls.appendChild(killBtn);
-
-  // Move action buttons into the dropdown panel instead of showing them inline
-  menuPanel.appendChild(runBtn);
-  menuPanel.appendChild(inputWrapper);
-  menuPanel.appendChild(terminateBtn);
-  menuPanel.appendChild(killBtn);
-
-  [runBtn, terminateBtn, killBtn].forEach(btn => {
-    btn.style.width = '100%'; btn.style.margin = '0 0 8px 0'; btn.style.textAlign = 'left';
-  });
-
-  // Mount terminal view first to occupy the top space; toolbar overlays inside it
-  terminalWrapper.appendChild(output);
-  terminalWrapper.appendChild(toolbar);
-  container.appendChild(terminalWrapper);
+  // Assemble
+  inputRow.append(inputField, sendBtn);
+  menu.append(menuRunBtn, sep, inputRow, terminateBtn, killBtn);
+  toolbar.append(runIconBtn, menuBtn, menu);
+  terminal.append(output, toolbar);
+  container.append(terminal);
   el.appendChild(container);
 
-  const positionPopoverNearButton = () => {
-    const r = menuBtn.getBoundingClientRect();
-    const panelWidth = measurePanelWidth(menuPanel);
-    let left = r.right - panelWidth;
+  // === Theme sync ===
+  model.on("change:theme", () => {
+    container.dataset.theme = model.get("theme") || "dark";
+  });
 
-    const margin = 8;
-    const maxLeft = window.innerWidth - panelWidth - margin;
-    if (left < margin) left = margin;
-    if (left > maxLeft) left = maxLeft;
+  // === Stream buffer (rAF batching for smooth output) ===
+  const buf = [];
+  let scheduled = false;
 
-    let top = r.bottom;
-    menuPanel.style.left = `${Math.round(left)}px`;
-    menuPanel.style.top  = `${Math.round(top)}px`;
-  };
-  
-  /**
-   * Measure the panel's rendered width even if it's hidden with display:none.
-   * Returns a number in CSS pixels.
-   */
-  function measurePanelWidth(el) {
-    // If visible and laid out, use offsetWidth
-    if (el.offsetWidth) return el.offsetWidth;
-
-    // Temporarily reveal to measure without flashing
-    const prevDisplay = el.style.display;
-    const prevVisibility = el.style.visibility;
-
-    // Ensure it renders offscreen without affecting layout
-    el.style.visibility = 'hidden';
-    el.style.display = 'block';
-
-    const w = el.offsetWidth;
-
-    // Restore previous styles
-    el.style.display = prevDisplay;
-    el.style.visibility = prevVisibility;
-
-    return w;
+  function write(chunk) {
+    buf.push(chunk);
+    if (!scheduled) {
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        output.textContent += buf.join("");
+        buf.length = 0;
+        output.scrollTop = output.scrollHeight;
+      });
+    }
   }
 
-  menuBtn.addEventListener('click', (e) => {
+  // === UI state helper ===
+  function setRunning(running) {
+    runIconBtn.disabled = running;
+    menuRunBtn.disabled = running;
+    terminateBtn.disabled = !running;
+    killBtn.disabled = !running;
+  }
+  setRunning(false);
+
+  // === Popover menu ===
+  function positionMenu() {
+    const r = menuBtn.getBoundingClientRect();
+    const w = menu.offsetWidth || 200;
+    const margin = 8;
+    let left = Math.max(margin, Math.min(r.right - w, window.innerWidth - w - margin));
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.top = `${Math.round(r.bottom + 4)}px`;
+  }
+
+  function closeMenu() {
+    if (menu.matches(":popover-open")) menu.hidePopover();
+  }
+
+  menuBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (menuPanel.matches(':popover-open')) {
-      menuPanel.hidePopover();
+    if (menu.matches(":popover-open")) {
+      menu.hidePopover();
     } else {
-      positionPopoverNearButton();
-      menuPanel.showPopover();
+      positionMenu();
+      menu.showPopover();
     }
   });
 
-  document.addEventListener('mousedown', (e) => {
+  document.addEventListener("mousedown", (e) => {
     if (
-      menuPanel.matches(':popover-open') &&
-      !menuPanel.contains(e.target) &&
+      menu.matches(":popover-open") &&
+      !menu.contains(e.target) &&
       e.target !== menuBtn
     ) {
-      menuPanel.hidePopover();
+      closeMenu();
     }
   });
 
-  // Prevent clicks inside the menu from bubbling to the document handler (which closes the menu)
-  ['pointerdown', 'mousedown', 'click', 'touchstart'].forEach((evt) => {
-    menuPanel.addEventListener(
-      evt,
-      (e) => { e.stopPropagation(); },
-      false
-    );
+  menu.addEventListener("mousedown", (e) => e.stopPropagation());
+
+  // === Actions (Frontend -> Backend) ===
+  function execute() {
+    closeMenu();
+    output.textContent = "";
+    setRunning(true);
+    model.send({ type: "execute" });
+  }
+
+  function sendInput() {
+    const text = inputField.value.trim();
+    if (!text) return;
+    model.send({ type: "input", data: inputField.value });
+    inputField.value = "";
+  }
+
+  runIconBtn.addEventListener("click", execute);
+  menuRunBtn.addEventListener("click", execute);
+
+  terminateBtn.addEventListener("click", () => {
+    closeMenu();
+    model.send({ type: "terminate" });
   });
 
-  // Run button
-  runBtn.addEventListener('click', () => {
-    if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
-    runBtn.disabled = true;
-    runBtn.textContent = '⏳ Running...';
-    runBtn.style.background = '#666';
-    output.textContent = `$ ${model.get('command')}\n`;
-    model.send('execute_command');
+  killBtn.addEventListener("click", () => {
+    closeMenu();
+    model.send({ type: "kill" });
   });
 
-  // Terminate button
-  terminateBtn.addEventListener('click', () => {
-    if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
-    model.send('terminate_process');
-    write('\n\n🛑 Terminate requested...');
+  sendBtn.addEventListener("click", sendInput);
+  inputField.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendInput();
   });
 
-  // Kill button
-  killBtn.addEventListener('click', () => {
-    if (menuPanel.matches(':popover-open')) menuPanel.hidePopover();
-    model.send('kill_process');
-    write('\n\n❌ Kill requested...');
-  });
-
-  // Handle output updates (best option: robust states + feedback)
-  model.on('msg:custom', (msg) => {
+  // === Messages (Backend -> Frontend) ===
+  model.on("msg:custom", (msg) => {
     switch (msg.type) {
-      case 'started':
-        // Process just started: enable/disable controls accordingly and show header
-        runBtn.disabled = true;
-        terminateBtn.disabled = false;
-        killBtn.disabled = false;
-        write(`Started in (pid=${msg.pid}${msg.pgid ? `, pgid=${msg.pgid}` : ''})\n\n`);
+      case "started":
+        setRunning(true);
+        write(`$ ${model.get("command")}\n`);
+        write(`pid=${msg.pid}${msg.pgid ? ` pgid=${msg.pgid}` : ""}\n\n`);
         break;
 
-      case 'output':
-        write(msg.data); // realtime streaming
+      case "output":
+        write(msg.data);
         break;
 
-      case 'terminated':
-        // Process terminated via SIGTERM
-        terminateBtn.disabled = true;
-        killBtn.disabled = true;
-  runBtn.disabled = false;
-  runBtn.style.background = '#007acc';
-  runIconBtn.disabled = false;                 // NEW: re-enable icon button
-  runIconBtn.style.background = '#007acc';
-        updateButtonText();
-        write('\n\n🛑 Process terminated (SIGTERM)');
+      case "completed":
+        setRunning(false);
+        write(
+          msg.returncode === 0
+            ? "\n\u2705 Done"
+            : `\n\u274C Exit code ${msg.returncode}`
+        );
         break;
 
-      case 'killed':
-        // Process killed via SIGKILL
-        terminateBtn.disabled = true;
-        killBtn.disabled = true;
-  runBtn.disabled = false;
-  runBtn.style.background = '#007acc';
-  runIconBtn.disabled = false;                 // NEW: re-enable icon button
-  runIconBtn.style.background = '#007acc';
-        updateButtonText();
-        write('\n\n❌ Process killed (SIGKILL)');
+      case "terminated":
+        setRunning(false);
+        write("\n\uD83D\uDED1 Terminated (SIGTERM)");
         break;
 
-      case 'completed':
-        // Natural completion
-        terminateBtn.disabled = true;
-        killBtn.disabled = true;
-  runBtn.disabled = false;
-  runBtn.style.background = '#007acc';
-  runIconBtn.disabled = false;                 // NEW: re-enable icon button
-  runIconBtn.style.background = '#007acc';
-        updateButtonText();
-        {
-          const statusMsg =
-            msg.returncode === 0
-              ? '\n\n✅ Process completed successfully'
-              : `\n\n❌ Process exited with code ${msg.returncode}`;
-          write(statusMsg);
-        }
+      case "killed":
+        setRunning(false);
+        write("\n\u274C Killed (SIGKILL)");
         break;
 
-      case 'error':
-        // Error path
-        terminateBtn.disabled = true;
-        killBtn.disabled = true;
-  runBtn.disabled = false;
-  runBtn.style.background = '#d73a49';
-  runIconBtn.disabled = false;                 // NEW: re-enable icon button
-  runIconBtn.style.background = '#007acc';
-        updateButtonText();
-        write(`\n\n💥 Error: ${msg.error}`);
+      case "error":
+        setRunning(false);
+        write(`\n\uD83D\uDCA5 Error: ${msg.error}`);
+        break;
+
+      case "not_running":
+        write("\n\u26A0\uFE0F No running process");
         break;
     }
   });
-
-  // Update button text when command changes
-  model.on('change:command', updateButtonText);
 }
 
 export default { render };
