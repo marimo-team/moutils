@@ -38,6 +38,7 @@ uv add moutils
 | [`CameraCapture`](#cameracapture) | Capture a still image from the webcam |
 | [`Notification`](#notification) | Send browser notifications |
 | [`KeyboardShortcut`](#keyboardshortcut) | Listen for global keyboard shortcuts |
+| [`thread_map`<br>`process_map`<br>`interpreter_map`](#thread_map-process_map-interpreter_map) | Thread/Process/Interpreter mapping | 
 
 ---
 
@@ -216,6 +217,28 @@ from moutils import KeyboardShortcut
 ks = KeyboardShortcut(shortcut="ctrl+k")
 ks.pressed  # True when the shortcut is pressed
 ks.event    # dict with key event details
+```
+
+### thread_map, process_map, interpreter_map
+
+Equivalent to `list(map(fn, *iterables))` driven by `ThreadPoolExecutor`,
+`ProcessPoolExecutor`, or `InterpreterPoolExecutor` (python >= 3.14) from
+`concurrent.futures`, respectively, with a Marimo progress bar or spinner.
+
+A spinner is used if the length cannot be automatically determined.
+
+Inspired by https://tqdm.github.io/docs/contrib.concurrent/.
+
+```python
+from moutils.concurrent import thread_map, process_map, interpreter_map
+
+def add_one(x):
+    return x + 1
+
+results: list[int] = thread_map(add_one, range(1000))
+# Can specify title, max_workers, etc.
+results = process_map(add_one, range(1000), title="Process map", max_workers=2)
+results = interpreter_map(add_one, range(1000)) # Only available for Python >=3.14
 ```
 
 ## Development
