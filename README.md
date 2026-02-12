@@ -38,7 +38,7 @@ uv add moutils
 | [`CameraCapture`](#cameracapture) | Capture a still image from the webcam |
 | [`Notification`](#notification) | Send browser notifications |
 | [`KeyboardShortcut`](#keyboardshortcut) | Listen for global keyboard shortcuts |
-| [`thread_map`<br>`process_map`<br>`interpreter_map`](#thread_map-process_map-interpreter_map) | Thread/Process/Interpreter mapping | 
+| [`thread_map`<br>`process_map`<br>`interpreter_map`](#thread_map-process_map-interpreter_map) | Thread/Process/Interpreter mapping |
 | [`PrintPageButton`](#printpagebutton) | Button to open the browser print dialog |
 | [`print_page()`](#print_page) | Programmatically trigger the browser print dialog |
 | [`ScreenshotButton`](#screenshotbutton) | Button to capture a DOM element as PNG |
@@ -243,6 +243,8 @@ results: list[int] = thread_map(add_one, range(1000))
 # Can specify title, max_workers, etc.
 results = process_map(add_one, range(1000), title="Process map", max_workers=2)
 results = interpreter_map(add_one, range(1000)) # Only available for Python >=3.14
+```
+
 ### PrintPageButton
 
 Button that opens the browser print dialog when clicked.
