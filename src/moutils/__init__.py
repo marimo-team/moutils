@@ -40,6 +40,10 @@ __all__ = [
     "CameraCapture",
     "Notification",
     "KeyboardShortcut",
+    "PrintPageButton",
+    "print_page",
+    "ScreenshotButton",
+    "screenshot",
 ]
 
 
@@ -750,3 +754,55 @@ class KeyboardShortcut(anywidget.AnyWidget):
     def __new__(cls, *args: Any, **kwargs: Any) -> Any:
         instance = super().__new__(cls)
         return headless(instance, *args, **kwargs)
+
+
+class PrintPageButton(anywidget.AnyWidget):
+    """Button widget that opens the browser print dialog."""
+
+    _esm = Path(__file__).parent / "static" / "print_page_button.js"
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return _wrap_marimo(instance, *args, **kwargs)
+
+
+class _PrintPage(anywidget.AnyWidget):
+    _esm = Path(__file__).parent / "static" / "print_page.js"
+    trigger = traitlets.Bool(True).tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
+
+
+def print_page():
+    """Programmatically trigger the browser print dialog."""
+    return _PrintPage()
+
+
+class ScreenshotButton(anywidget.AnyWidget):
+    """Button widget that captures a screenshot of a DOM element."""
+
+    _esm = Path(__file__).parent / "static" / "screenshot_button.js"
+    locator = traitlets.Unicode("").tag(sync=True)
+    filename = traitlets.Unicode("").tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return _wrap_marimo(instance, *args, **kwargs)
+
+
+class _Screenshot(anywidget.AnyWidget):
+    _esm = Path(__file__).parent / "static" / "screenshot.js"
+    locator = traitlets.Unicode("").tag(sync=True)
+    filename = traitlets.Unicode("").tag(sync=True)
+    trigger = traitlets.Bool(True).tag(sync=True)
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Any:
+        instance = super().__new__(cls)
+        return headless(instance, *args, **kwargs)
+
+
+def screenshot(locator="", filename=None):
+    """Programmatically screenshot a DOM element and download as PNG."""
+    return _Screenshot(locator=locator, filename=filename or "")

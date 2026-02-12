@@ -38,6 +38,10 @@ uv add moutils
 | [`CameraCapture`](#cameracapture) | Capture a still image from the webcam |
 | [`Notification`](#notification) | Send browser notifications |
 | [`KeyboardShortcut`](#keyboardshortcut) | Listen for global keyboard shortcuts |
+| [`PrintPageButton`](#printpagebutton) | Button to open the browser print dialog |
+| [`print_page()`](#print_page) | Programmatically trigger the browser print dialog |
+| [`ScreenshotButton`](#screenshotbutton) | Button to capture a DOM element as PNG |
+| [`screenshot()`](#screenshot) | Programmatically screenshot a DOM element |
 
 ---
 
@@ -216,6 +220,42 @@ from moutils import KeyboardShortcut
 ks = KeyboardShortcut(shortcut="ctrl+k")
 ks.pressed  # True when the shortcut is pressed
 ks.event    # dict with key event details
+```
+
+### PrintPageButton
+
+Button that opens the browser print dialog when clicked.
+
+```python
+from moutils import PrintPageButton
+btn = PrintPageButton()
+```
+
+### print_page()
+
+Programmatically trigger the browser print dialog.
+
+```python
+import moutils
+moutils.print_page()
+```
+
+### ScreenshotButton
+
+Button that captures a DOM element as a PNG and downloads it.
+
+```python
+from moutils import ScreenshotButton
+btn = ScreenshotButton(locator="#my-chart", filename="chart.png")
+```
+
+### screenshot()
+
+Programmatically screenshot a DOM element and download as PNG.
+
+```python
+import moutils
+moutils.screenshot(locator="#my-chart", filename="chart.png")
 ```
 
 ## Development
