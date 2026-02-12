@@ -39,6 +39,10 @@ uv add moutils
 | [`Notification`](#notification) | Send browser notifications |
 | [`KeyboardShortcut`](#keyboardshortcut) | Listen for global keyboard shortcuts |
 | [`thread_map`<br>`process_map`<br>`interpreter_map`](#thread_map-process_map-interpreter_map) | Thread/Process/Interpreter mapping | 
+| [`PrintPageButton`](#printpagebutton) | Button to open the browser print dialog |
+| [`print_page()`](#print_page) | Programmatically trigger the browser print dialog |
+| [`ScreenshotButton`](#screenshotbutton) | Button to capture a DOM element as PNG |
+| [`screenshot()`](#screenshot) | Programmatically screenshot a DOM element |
 
 ---
 
@@ -239,6 +243,40 @@ results: list[int] = thread_map(add_one, range(1000))
 # Can specify title, max_workers, etc.
 results = process_map(add_one, range(1000), title="Process map", max_workers=2)
 results = interpreter_map(add_one, range(1000)) # Only available for Python >=3.14
+### PrintPageButton
+
+Button that opens the browser print dialog when clicked.
+
+```python
+from moutils import PrintPageButton
+btn = PrintPageButton()
+```
+
+### print_page()
+
+Programmatically trigger the browser print dialog.
+
+```python
+import moutils
+moutils.print_page()
+```
+
+### ScreenshotButton
+
+Button that captures a DOM element as a PNG and downloads it.
+
+```python
+from moutils import ScreenshotButton
+btn = ScreenshotButton(locator="#my-chart", filename="chart.png")
+```
+
+### screenshot()
+
+Programmatically screenshot a DOM element and download as PNG.
+
+```python
+import moutils
+moutils.screenshot(locator="#my-chart", filename="chart.png")
 ```
 
 ## Development

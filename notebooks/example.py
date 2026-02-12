@@ -42,6 +42,10 @@ def _():
         Geolocation,
         Notification,
         KeyboardShortcut,
+        PrintPageButton,
+        print_page,
+        ScreenshotButton,
+        screenshot,
     )
 
     return (
@@ -54,6 +58,8 @@ def _():
         Notification,
         OnlineStatus,
         PageVisibility,
+        PrintPageButton,
+        ScreenshotButton,
         Slot,
         StorageItem,
         URLHash,
@@ -61,6 +67,8 @@ def _():
         URLPath,
         ViewportSize,
         mo,
+        print_page,
+        screenshot,
         shell,
     )
 
@@ -493,6 +501,100 @@ def _(mo):
 def _(shell):
     shell_widget = shell("echo 'Hello from moutils!'")
     shell_widget
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ---
+
+    ## Print & Screenshot
+
+    ### `PrintPageButton`
+
+    A button that opens the browser print dialog when clicked.
+    """)
+    return
+
+
+@app.cell
+def _(PrintPageButton):
+    print_btn = PrintPageButton()
+    print_btn
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### `print_page()`
+
+    Programmatically trigger the browser print dialog. Uncomment to activate.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    print_page_button = mo.ui.run_button(label="Print page")
+    print_page_button
+    return (print_page_button,)
+
+
+@app.cell
+def _(print_page, print_page_button):
+    # Uncomment below to trigger print dialog on cell run:
+    if print_page_button.value:
+        print_page()
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### `ScreenshotButton`
+
+    A button that captures a DOM element as a PNG download.
+    """)
+    return
+
+
+@app.cell
+def _(ScreenshotButton):
+    screenshot_btn = ScreenshotButton(locator="body", filename="page.png")
+    screenshot_btn
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### `screenshot()`
+
+    Programmatically screenshot a DOM element. Uncomment to activate.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    take_screenshot = mo.ui.run_button(label="Take screenshot")
+    take_screenshot
+    return (take_screenshot,)
+
+
+@app.cell
+def _(screenshot, take_screenshot):
+    # Uncomment below to capture a screenshot on cell run:
+    if take_screenshot.value:
+        screenshot(locator="[data-cell-name='my_cell']", filename="page.png")
+    return
+
+
+@app.cell
+def my_cell(mo):
+    mo.ui.table([1, 2, 3])
     return
 
 
