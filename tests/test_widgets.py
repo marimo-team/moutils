@@ -22,6 +22,8 @@ from moutils import (
     CookieManager,
     StorageItem,
     CopyToClipboard,
+    PrintPageButton,
+    ScreenshotButton,
 )
 
 STATIC_DIR = Path(__file__).parent.parent / "src" / "moutils" / "static"
@@ -162,6 +164,25 @@ class TestExistingWidgets:
         w = _make(CopyToClipboard)
         assert w.text == ""
         assert w.success is False
+
+
+class TestPrintPageButton:
+    def test_init_defaults(self):
+        w = _make(PrintPageButton)
+        assert w is not None
+
+    def test_esm_path_exists(self):
+        assert (STATIC_DIR / "print_page_button.js").exists()
+
+
+class TestScreenshotButton:
+    def test_init_defaults(self):
+        w = _make(ScreenshotButton)
+        assert w.locator == ""
+        assert w.filename == ""
+
+    def test_esm_path_exists(self):
+        assert (STATIC_DIR / "screenshot_button.js").exists()
 
 
 # --- JS syntax validation ---
