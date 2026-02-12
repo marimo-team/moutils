@@ -10,7 +10,7 @@ dependencies = [
 ]
 name = "moutils"
 readme = "README.md"
-version = "0.4.1"
+version = "0.4.2"
 
 # For projects not using `uv`, you can install these development dependencies with:
 # `pip install -e ".[dev]"`
