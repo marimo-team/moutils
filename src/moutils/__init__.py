@@ -471,7 +471,6 @@ class ShellWidget(anywidget.AnyWidget):
             pid = self._process.pid
             self._pgid = pid
             self.send({"type": "started", "pid": pid, "pgid": self._pgid})
-            self.send({"type": "output", "data": f"$ {self.command}\n"})
 
             # Register reader AFTER spawning the child (simple, unified behavior)
             def _remove_reader_safely():

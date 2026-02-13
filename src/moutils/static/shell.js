@@ -11,6 +11,7 @@ function render({ model, el }) {
 
   const output = document.createElement("pre");
   output.className = "shell-output";
+  output.textContent = `$ ${model.get("command")}`;
 
   // Toolbar (overlays top-right of terminal)
   const toolbar = document.createElement("div");
@@ -137,7 +138,7 @@ function render({ model, el }) {
   // === Actions (Frontend -> Backend) ===
   function execute() {
     closeMenu();
-    output.textContent = "";
+    output.textContent = `$ ${model.get("command")}\n`;
     setRunning(true);
     model.send({ type: "execute" });
   }
@@ -172,8 +173,6 @@ function render({ model, el }) {
     switch (msg.type) {
       case "started":
         setRunning(true);
-        write(`$ ${model.get("command")}\n`);
-        write(`pid=${msg.pid}${msg.pgid ? ` pgid=${msg.pgid}` : ""}\n\n`);
         break;
 
       case "output":
