@@ -17,8 +17,10 @@ def concurrent_map[T, R](
     # Note: The `Executor` abstract base class does not specify arguments in __init__(),
     # so we specify a union of the individual types. Also, InterpreterPoolExecutor is
     # only available in Python 3.14+, so we use a string literal to avoid import errors
-    # in older versions.
-    pool: Type[ThreadPoolExecutor | ProcessPoolExecutor | "InterpreterPoolExecutor"],
+    # in older versions, but `|` unions cannot exist between a type and a string
+    # literal, so we have to union the two `Type`s separately.
+    pool: Type[ThreadPoolExecutor | ProcessPoolExecutor]
+    | Type["InterpreterPoolExecutor"],
     fn: Callable[[T], R],
     iterable: Iterable[T],
     *,
