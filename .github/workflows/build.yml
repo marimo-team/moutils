@@ -19,12 +19,12 @@ jobs:
       UV_PYTHON: 3.12
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
 
       - name: Build package
         run: |
@@ -37,7 +37,7 @@ jobs:
 
       - name: ⎔ Setup Node.js
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
