@@ -35,11 +35,11 @@ def concurrent_map[T, R](
     try:
         with pool(max_workers=max_workers) as executor:
             futures = executor.map(fn, iterable)
+            if total is None and isinstance(iterable, Sized):
+                total = len(iterable)
             if disabled:
                 results = list(futures)
-            elif isinstance(iterable, Sized):
-                if total is None:
-                    total = len(iterable)
+            elif total is not None:
                 results = list(
                     mo.status.progress_bar(
                         futures,
