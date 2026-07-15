@@ -75,7 +75,7 @@ class TestConcurrentMap:
 
         iterable = iterable_cls([1, 2, 3])
         result = concurrent_map(
-            DummyExecutor,
+            DummyExecutor,  # type: ignore  # Because there is no PoolExecutor protocol
             _double,
             iterable,
             total=total,
@@ -97,7 +97,7 @@ class TestConcurrentMap:
         status = mock_mo_status
 
         result = concurrent_map(
-            DummyExecutor,
+            DummyExecutor,  # type: ignore  # Because there is no PoolExecutor protocol
             fn=_double,
             iterable=[4, 5],
             total=None,
