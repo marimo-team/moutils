@@ -14,11 +14,15 @@ import marimo as mo
 
 
 def concurrent_map[T, R](
-    # Note: The `Executor` abstract base class does not specify arguments in __init__(),
-    # so we specify a union of the individual types. Also, InterpreterPoolExecutor is
-    # only available in Python 3.14+, so we use a string literal to avoid import errors
-    # in older versions, but `|` unions cannot exist between a type and a string
-    # literal, so we have to union the two `Type`s separately.
+    # Note: The `Executor` base class does not specify arguments in __init__(), so we
+    # specify a union of the individual types. Ideally, there would be a Protocol for
+    # this, but making one is more trouble than it's worth and more likely to have a
+    # bug. tqdm solves this by not even giving a type hint for its `pool` equivalent.
+    #
+    # Also, because InterpreterPoolExecutor is only available in Python 3.14+, we use a
+    # string literal to avoid import errors in older versions. Since `|` unions cannot
+    # exist between a type and a string literal, so we have to union the two `Type`s
+    # separately.
     pool: Type[ThreadPoolExecutor | ProcessPoolExecutor]
     | Type["InterpreterPoolExecutor"],
     fn: Callable[[T], R],
@@ -35,11 +39,11 @@ def concurrent_map[T, R](
     try:
         with pool(max_workers=max_workers) as executor:
             futures = executor.map(fn, iterable)
+            if total is None and isinstance(iterable, Sized):
+                total = len(iterable)
             if disabled:
                 results = list(futures)
-            elif isinstance(iterable, Sized):
-                if total is None:
-                    total = len(iterable)
+            elif total is not None:
                 results = list(
                     mo.status.progress_bar(
                         futures,
