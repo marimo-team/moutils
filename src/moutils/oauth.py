@@ -251,7 +251,9 @@ class DeviceFlow(anywidget.AnyWidget):
     def _handle_token_change(self, change: Dict[str, Any]) -> None:
         """Handle changes to the access_token property."""
         if self.debug:
-            self._log(f"_handle_token_change called: change={change}, current status={self.status}")
+            self._log(
+                f"_handle_token_change called: change={change}, current status={self.status}"
+            )
         if change["new"]:
             self._log("Access token received, calling success callback")
             # Always update status to success to trigger UI update
@@ -311,7 +313,9 @@ class DeviceFlow(anywidget.AnyWidget):
     def reset(self) -> None:
         """Reset the authentication state."""
         if self.debug:
-            self._log(f"reset called. Current access_token={self.access_token}, status={self.status}")
+            self._log(
+                f"reset called. Current access_token={self.access_token}, status={self.status}"
+            )
         # Reset authentication state
         self.device_code = ""
         self.user_code = ""
@@ -328,7 +332,7 @@ class DeviceFlow(anywidget.AnyWidget):
         """Store token data in the widget for JavaScript persistence."""
         if self.debug:
             self._log("Storing token data for persistence")
-        
+
         # For device flow, we don't have a token_expires_in attribute
         # The token persistence is handled differently in device flow
         # This method is called for compatibility with the token change handler
@@ -397,7 +401,9 @@ class DeviceFlow(anywidget.AnyWidget):
                 self.refresh_token = token_response.get("refresh_token", "")
 
                 # Store additional response data
-                refresh_token_expires_in = token_response.get("refresh_token_expires_in", 0)
+                refresh_token_expires_in = token_response.get(
+                    "refresh_token_expires_in", 0
+                )
                 try:
                     self.refresh_token_expires_in = int(refresh_token_expires_in)
                 except Exception:
@@ -565,24 +571,26 @@ class DeviceFlow(anywidget.AnyWidget):
             encoded_data = urllib.parse.urlencode(data).encode("utf-8")
 
             # Set up request
+            url = self.token_url
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json",
+            }
             req = urllib.request.Request(
-                self.token_url,
+                url,
                 data=encoded_data,
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Accept": "application/json",
-                },
+                headers=headers,
             )
 
             # Smart fallback mechanism: try direct connection first, then proxy if needed
             response = None
             error_to_retry = None
-            
+
             # First attempt: Try direct connection (no proxy)
             try:
                 if self.debug:
                     self._log("Attempting direct connection to OAuth provider")
-                
+
                 # Make request without proxy
                 with urllib.request.urlopen(req) as response:
                     response_data = response.read().decode("utf-8")
@@ -604,74 +612,55 @@ class DeviceFlow(anywidget.AnyWidget):
                                     urllib.parse.unquote(value)
                                 )
                         return parsed_data
-                
+
             except (urllib.error.URLError, ConnectionError, OSError) as e:
                 # These errors suggest network/proxy issues that might be resolved with a proxy
                 error_to_retry = e
                 if self.debug:
-                    self._log(f"Direct connection failed with {type(e).__name__}: {str(e)}")
-                
+                    self._log(
+                        f"Direct connection failed with {type(e).__name__}: {str(e)}"
+                    )
+
             # If we have a proxy configured, try with proxy
-            if hasattr(self, 'proxy') and self.proxy and self.proxy.strip():
+            if hasattr(self, "proxy") and self.proxy and self.proxy.strip():
                 if self.debug:
                     self._log(f"Retrying with proxy: {self.proxy}")
                 try:
                     # Format proxy URL properly
-                    if self.proxy.startswith(('http://', 'https://')):
+                    if self.proxy.startswith(("http://", "https://")):
                         proxy_url = self.proxy
                     else:
                         # Assume HTTPS if no protocol specified
                         proxy_url = f"https://{self.proxy}"
                     if self.debug:
                         self._log(f"Formatted proxy URL: {proxy_url}")
-                    if use_requests:
-                        # Use requests with proxy
-                        proxies = {'http': proxy_url, 'https': proxy_url}
-                        response = requests.request(
-                            method,
-                            url,
-                            data=data,
-                            headers=headers,
-                            proxies=proxies,
-                            timeout=30
-                        )
+                    # Route the same token POST through the proxy. The direct
+                    # attempt above uses urllib, so mirror it here (build an
+                    # opener with a ProxyHandler and reuse the already-encoded
+                    # request body and headers).
+                    proxy_handler = urllib.request.ProxyHandler(
+                        {"http": proxy_url, "https": proxy_url}
+                    )
+                    opener = urllib.request.build_opener(proxy_handler)
+                    proxy_req = urllib.request.Request(
+                        url, data=encoded_data, headers=headers
+                    )
+                    with opener.open(proxy_req) as response:
+                        response_data = response.read().decode("utf-8")
                         # Parse response
-                        content_type = response.headers.get("Content-Type", "")
+                        content_type = response.getheader("Content-Type", "")
                         if "application/json" in content_type:
-                            return response.json()
+                            return json.loads(response_data)
                         else:
                             # Parse URL-encoded response
-                            response_text = response.text
                             parsed_data = {}
-                            for pair in response_text.split("&"):
+                            for pair in response_data.split("&"):
                                 if "=" in pair:
                                     key, value = pair.split("=", 1)
-                                    parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                                    parsed_data[urllib.parse.unquote(key)] = (
+                                        urllib.parse.unquote(value)
+                                    )
                             return parsed_data
-                    else:
-                        # Use urllib with proxy
-                        proxy_handler = urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url})
-                        opener = urllib.request.build_opener(proxy_handler)
-                        urllib.request.install_opener(opener)
-                        if method == "POST" and data:
-                            encoded_data = urllib.parse.urlencode(data).encode("utf-8")
-                            req = urllib.request.Request(url, data=encoded_data, headers=headers)
-                        else:
-                            req = urllib.request.Request(url, headers=headers)
-                        with urllib.request.urlopen(req) as response:
-                            response_data = response.read().decode("utf-8")
-                            # Parse response
-                            content_type = response.getheader("Content-Type", "")
-                            if "application/json" in content_type:
-                                return json.loads(response_data)
-                            else:
-                                # Parse URL-encoded response
-                                parsed_data = {}
-                                for pair in response_data.split("&"):
-                                    if "=" in pair:
-                                        key, value = pair.split("=", 1)
-                                        parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
-                                return parsed_data
                 except Exception as proxy_error:
                     if self.debug:
                         self._log(f"Proxy connection also failed: {str(proxy_error)}")
@@ -710,16 +699,16 @@ class DeviceFlow(anywidget.AnyWidget):
                     "token": self.access_token,
                     "token_type_hint": "access_token",
                 }
-                
+
                 # Use the smart fallback helper method
                 response_data = self._make_request_with_fallback(
                     url=revoke_url,
                     method="POST",
                     data=data,
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
-                    use_requests=True
+                    use_requests=True,
                 )
-                
+
                 # Check if the response indicates success
                 if "error" not in response_data:
                     self._log("Token revoked successfully")
@@ -727,7 +716,9 @@ class DeviceFlow(anywidget.AnyWidget):
                     self._log(f"Token revocation returned error: {response_data}")
 
         except requests.exceptions.HTTPError as e:
-            self._log(f"HTTP error in token revocation: {e.response.status_code} {e.response.reason}")
+            self._log(
+                f"HTTP error in token revocation: {e.response.status_code} {e.response.reason}"
+            )
         except Exception as e:
             self._log(f"Error during logout: {str(e)}")
         finally:
@@ -803,7 +794,7 @@ class PKCEFlow(anywidget.AnyWidget):
     start_auth = traitlets.Bool(False).tag(sync=True)
     handle_callback = traitlets.Unicode("").tag(sync=True)
     logout_requested = traitlets.Bool(False).tag(sync=True)
-    
+
     # Token persistence
     token_expires_in = traitlets.Int(0).tag(sync=True)
 
@@ -922,7 +913,7 @@ class PKCEFlow(anywidget.AnyWidget):
             proxy=proxy or "",
             use_new_tab=use_new_tab if use_new_tab is not None else True,
         )
-        
+
         # Configure environment-specific URLs for Cloudflare
         if self.provider == "cloudflare":
             self._configure_cloudflare_urls()
@@ -940,13 +931,16 @@ class PKCEFlow(anywidget.AnyWidget):
         self._log("Configuring Cloudflare URLs based on environment")
         try:
             import js
+
             origin = js.eval("self.location?.origin")
             href = js.eval("self.location?.href")
             self._log(f"WASM environment detected - origin: {origin}")
             self._log(f"WASM environment detected - href: {href}")
-            
+
             if "localhost:8088" in origin:
-                self._log("Environment: Local WASM, redirects handled by Cloudflare Pages")
+                self._log(
+                    "Environment: Local WASM, redirects handled by Cloudflare Pages"
+                )
                 self.logout_url = f"{origin}/oauth2/revoke"
                 self.redirect_uri = f"{origin}/oauth/callback"
                 self.token_url = f"{origin}/oauth2/token"
@@ -954,52 +948,72 @@ class PKCEFlow(anywidget.AnyWidget):
             elif "localhost:2718" in origin:
                 # Check if this is workspace mode (has ?file= parameter)
                 if "?file=" in href:
-                    self._log("Environment: Local Python workspace mode (with ?file= parameter)")
+                    self._log(
+                        "Environment: Local Python workspace mode (with ?file= parameter)"
+                    )
                     # For workspace mode, we need to preserve the file parameter
                     # Use the sandbox callback which will redirect back to the workspace
                     self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
-                    self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                    self.redirect_uri = (
+                        "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                    )
                     self.token_url = "https://dash.cloudflare.com/oauth2/token"
                     self.use_new_tab = False
                 else:
-                    self._log("Environment: Local Python sandbox mode (no ?file= parameter)")
+                    self._log(
+                        "Environment: Local Python sandbox mode (no ?file= parameter)"
+                    )
                     # For sandbox mode, use the same configuration
                     self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
-                    self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                    self.redirect_uri = (
+                        "https://auth.sandbox.marimo.app/oauth/sso-callback"
+                    )
                     self.token_url = "https://dash.cloudflare.com/oauth2/token"
                     self.use_new_tab = False
             elif "localhost" in origin:
-                self._log("Environment: Local WASM, without Cloudflare Pages redirect handling")
+                self._log(
+                    "Environment: Local WASM, without Cloudflare Pages redirect handling"
+                )
                 self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
                 self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
                 self.token_url = "https://dash.cloudflare.com/oauth2/token"
                 self.use_new_tab = False
             elif "marimo.io" in origin:
-                self._log("Environment: Marimo Sandbox (marimo.io/p/dev), using sandbox callback")
+                self._log(
+                    "Environment: Marimo Sandbox (marimo.io/p/dev), using sandbox callback"
+                )
                 self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
                 self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
                 self.token_url = "https://dash.cloudflare.com/oauth2/token"
                 self.use_new_tab = False
             else:
-                self._log("Environment: Deployed (Production) WASM, redirects handled by Cloudflare Pages")
+                self._log(
+                    "Environment: Deployed (Production) WASM, redirects handled by Cloudflare Pages"
+                )
                 self.logout_url = f"{origin}/oauth2/revoke"
                 self.redirect_uri = f"{origin}/oauth/callback"
                 self.token_url = f"{origin}/oauth2/token"
                 self.use_new_tab = True
         except (AttributeError, ModuleNotFoundError, NameError):
             # Python environment - check if we can detect workspace mode
-            self._log("Environment: Local Python without Cloudflare Pages redirect handling")
-            
+            self._log(
+                "Environment: Local Python without Cloudflare Pages redirect handling"
+            )
+
             # Try to detect workspace mode by checking if href contains ?file=
-            if hasattr(self, 'href') and self.href and "?file=" in self.href:
-                self._log("Environment: Local Python workspace mode detected (with ?file= parameter)")
+            if hasattr(self, "href") and self.href and "?file=" in self.href:
+                self._log(
+                    "Environment: Local Python workspace mode detected (with ?file= parameter)"
+                )
                 # For workspace mode, preserve the file parameter in state
                 self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
                 self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
                 self.token_url = "https://dash.cloudflare.com/oauth2/token"
                 self.use_new_tab = False
             else:
-                self._log("Environment: Local Python sandbox mode detected (no ?file= parameter)")
+                self._log(
+                    "Environment: Local Python sandbox mode detected (no ?file= parameter)"
+                )
                 self.logout_url = "https://dash.cloudflare.com/oauth2/revoke"
                 self.redirect_uri = "https://auth.sandbox.marimo.app/oauth/sso-callback"
                 self.token_url = "https://dash.cloudflare.com/oauth2/token"
@@ -1049,48 +1063,60 @@ class PKCEFlow(anywidget.AnyWidget):
         else:
             sandbox_id = hostname
             if self.debug:
-                self._log(
-                    f"Fallback hostname for sandbox_id: {sandbox_id}"
-                )
+                self._log(f"Fallback hostname for sandbox_id: {sandbox_id}")
 
         # Determine the appropriate href for the state
         # In WASM environments, we want to redirect to a valid page, not the login page
         state_href = self.href
-        
+
         # Check if we're in a WASM environment and the href points to a login page
         try:
-            import js
+            import importlib.util
+
+            if importlib.util.find_spec("js") is None:
+                raise ModuleNotFoundError("js")
             # We're in a WASM environment
             if self.href and ("login" in self.href or "pkceflow_login" in self.href):
                 # Extract the origin and construct a valid href
                 from urllib.parse import urlparse
+
                 parsed = urlparse(self.href)
                 # Redirect to main page instead of login page
                 state_href = f"{parsed.scheme}://{parsed.netloc}/"
                 if self.debug:
-                    self._log(f"WASM environment detected, redirecting from {self.href} to {state_href}")
+                    self._log(
+                        f"WASM environment detected, redirecting from {self.href} to {state_href}"
+                    )
         except (ImportError, AttributeError, ModuleNotFoundError, NameError):
             # We're in a Python environment, use the original href
             if self.debug:
-                self._log(f"Python environment detected, using original href: {self.href}")
-        
+                self._log(
+                    f"Python environment detected, using original href: {self.href}"
+                )
+
         # Special handling for workspace mode (localhost:2718 with ?file= parameter)
         if self.href and "localhost:2718" in self.href and "?file=" in self.href:
             if self.debug:
-                self._log(f"Workspace mode detected, preserving file parameter in state: {self.href}")
+                self._log(
+                    f"Workspace mode detected, preserving file parameter in state: {self.href}"
+                )
             # Keep the full href with file parameter for workspace mode
             state_href = self.href
         elif self.href and "localhost:2718" in self.href:
             if self.debug:
-                self._log(f"Localhost:2718 detected but no file parameter, using original href: {self.href}")
+                self._log(
+                    f"Localhost:2718 detected but no file parameter, using original href: {self.href}"
+                )
             # For localhost:2718 without file parameter, still preserve the href
             state_href = self.href
-        
-        state = OrderedDict([
-            ("sandbox_id", sandbox_id),
-            ("href", state_href),
-            ("nonce", f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}"),
-        ])
+
+        state = OrderedDict(
+            [
+                ("sandbox_id", sandbox_id),
+                ("href", state_href),
+                ("nonce", f"{secrets.token_urlsafe(16)}.{secrets.token_urlsafe(8)}"),
+            ]
+        )
         if self.additional_state is not None:
             state.update(self.additional_state())
 
@@ -1183,7 +1209,9 @@ class PKCEFlow(anywidget.AnyWidget):
     def _handle_token_change(self, change: Dict[str, Any]) -> None:
         """Handle changes to the access_token property."""
         if self.debug:
-            self._log(f"_handle_token_change called: change={change}, current status={self.status}")
+            self._log(
+                f"_handle_token_change called: change={change}, current status={self.status}"
+            )
         if change["new"]:
             self._log("Access token received, calling success callback")
             # Always update status to success to trigger UI update
@@ -1208,16 +1236,16 @@ class PKCEFlow(anywidget.AnyWidget):
         """Store token data in the widget for JavaScript persistence."""
         if self.debug:
             self._log("Storing token data for persistence")
-        
+
         # Set the token expiration time to trigger JavaScript storage
         # Most OAuth tokens expire in 1 hour (3600 seconds) if not specified
         expires_in = 3600  # Default to 1 hour
-        
+
         # Try to get expiration from token response if available
         # This would need to be set when the token is received
-        if hasattr(self, '_token_expires_in') and self._token_expires_in:
+        if hasattr(self, "_token_expires_in") and self._token_expires_in:
             expires_in = self._token_expires_in
-        
+
         self.token_expires_in = expires_in
 
     def _handle_error_change(self, change: Dict[str, Any]) -> None:
@@ -1295,7 +1323,7 @@ class PKCEFlow(anywidget.AnyWidget):
                 self.refresh_token_expires_in = token_response.get(
                     "refresh_token_expires_in", 0
                 )
-                
+
                 # Store token expiration time for persistence
                 self._token_expires_in = token_response.get("expires_in", 3600)
 
@@ -1308,7 +1336,7 @@ class PKCEFlow(anywidget.AnyWidget):
                 self.status = "success"
                 self.start_auth = False
                 self._log("Authentication successful")
-                
+
                 # Store token data for persistence
                 self._store_token_for_persistence()
                 return
@@ -1332,7 +1360,9 @@ class PKCEFlow(anywidget.AnyWidget):
     def reset(self) -> None:
         """Reset the authentication state."""
         if self.debug:
-            self._log(f"reset called. Current access_token={self.access_token}, status={self.status}")
+            self._log(
+                f"reset called. Current access_token={self.access_token}, status={self.status}"
+            )
         hostname = self.hostname
         port = self.port
         href = self.href
@@ -1356,21 +1386,26 @@ class PKCEFlow(anywidget.AnyWidget):
         self.href = href
         self.proxy = proxy
 
-    def _make_request_with_fallback(self, url: str, method: str = "POST", data: Optional[Dict[str, Any]] = None, 
-                                   headers: Optional[Dict[str, str]] = None, 
-                                   use_requests: bool = True) -> Dict[str, Any]:
+    def _make_request_with_fallback(
+        self,
+        url: str,
+        method: str = "POST",
+        data: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        use_requests: bool = True,
+    ) -> Dict[str, Any]:
         """Make an HTTP request with smart fallback: try direct connection first, then proxy if needed.
-        
+
         Args:
             url: The URL to request
             method: HTTP method (GET, POST, etc.)
             data: Request data (for POST requests)
             headers: Request headers
             use_requests: Whether to use requests library (True) or urllib (False)
-            
+
         Returns:
             Parsed response data
-            
+
         Raises:
             Exception: If both direct and proxy connections fail
         """
@@ -1378,10 +1413,10 @@ class PKCEFlow(anywidget.AnyWidget):
             headers = {}
         if data is None:
             data = {}
-            
+
         if self.debug:
             self._log(f"Making {method} request to {url} with fallback")
-        
+
         # Try direct connection first (no proxy)
         tried_proxy = False
         error_to_retry = None
@@ -1395,7 +1430,7 @@ class PKCEFlow(anywidget.AnyWidget):
                     data=data,
                     headers=headers,
                     proxies=None,  # No proxy for direct connection
-                    timeout=30
+                    timeout=30,
                 )
                 content_type = response.headers.get("Content-Type", "")
                 if "application/json" in content_type:
@@ -1406,12 +1441,16 @@ class PKCEFlow(anywidget.AnyWidget):
                     for pair in response_text.split("&"):
                         if "=" in pair:
                             key, value = pair.split("=", 1)
-                            parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                            parsed_data[urllib.parse.unquote(key)] = (
+                                urllib.parse.unquote(value)
+                            )
                     return parsed_data
             else:
                 if method == "POST" and data:
                     encoded_data = urllib.parse.urlencode(data).encode("utf-8")
-                    req = urllib.request.Request(url, data=encoded_data, headers=headers)
+                    req = urllib.request.Request(
+                        url, data=encoded_data, headers=headers
+                    )
                 else:
                     req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req) as response:
@@ -1424,20 +1463,24 @@ class PKCEFlow(anywidget.AnyWidget):
                         for pair in response_data.split("&"):
                             if "=" in pair:
                                 key, value = pair.split("=", 1)
-                                parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                                parsed_data[urllib.parse.unquote(key)] = (
+                                    urllib.parse.unquote(value)
+                                )
                         return parsed_data
         except Exception as direct_error:
             error_to_retry = direct_error
             if self.debug:
-                self._log(f"Direct connection failed: {str(direct_error)}. Trying proxy as fallback.")
-        
+                self._log(
+                    f"Direct connection failed: {str(direct_error)}. Trying proxy as fallback."
+                )
+
         # If direct connection failed and we have a proxy configured, try with proxy
-        if hasattr(self, 'proxy') and self.proxy and self.proxy.strip():
+        if hasattr(self, "proxy") and self.proxy and self.proxy.strip():
             if self.debug:
                 self._log(f"Trying proxy as fallback: {self.proxy}")
             try:
                 # Format proxy URL properly
-                if self.proxy.startswith(('http://', 'https://')):
+                if self.proxy.startswith(("http://", "https://")):
                     proxy_url = self.proxy
                 else:
                     # Assume HTTPS if no protocol specified
@@ -1446,14 +1489,14 @@ class PKCEFlow(anywidget.AnyWidget):
                     self._log(f"Formatted proxy URL: {proxy_url}")
                 if use_requests:
                     # Use requests with proxy
-                    proxies = {'http': proxy_url, 'https': proxy_url}
+                    proxies = {"http": proxy_url, "https": proxy_url}
                     response = requests.request(
                         method,
                         url,
                         data=data,
                         headers=headers,
                         proxies=proxies,
-                        timeout=30
+                        timeout=30,
                     )
                     # Parse response
                     content_type = response.headers.get("Content-Type", "")
@@ -1466,16 +1509,22 @@ class PKCEFlow(anywidget.AnyWidget):
                         for pair in response_text.split("&"):
                             if "=" in pair:
                                 key, value = pair.split("=", 1)
-                                parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                                parsed_data[urllib.parse.unquote(key)] = (
+                                    urllib.parse.unquote(value)
+                                )
                         return parsed_data
                 else:
                     # Use urllib with proxy
-                    proxy_handler = urllib.request.ProxyHandler({'http': proxy_url, 'https': proxy_url})
+                    proxy_handler = urllib.request.ProxyHandler(
+                        {"http": proxy_url, "https": proxy_url}
+                    )
                     opener = urllib.request.build_opener(proxy_handler)
                     urllib.request.install_opener(opener)
                     if method == "POST" and data:
                         encoded_data = urllib.parse.urlencode(data).encode("utf-8")
-                        req = urllib.request.Request(url, data=encoded_data, headers=headers)
+                        req = urllib.request.Request(
+                            url, data=encoded_data, headers=headers
+                        )
                     else:
                         req = urllib.request.Request(url, headers=headers)
                     with urllib.request.urlopen(req) as response:
@@ -1490,7 +1539,9 @@ class PKCEFlow(anywidget.AnyWidget):
                             for pair in response_data.split("&"):
                                 if "=" in pair:
                                     key, value = pair.split("=", 1)
-                                    parsed_data[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+                                    parsed_data[urllib.parse.unquote(key)] = (
+                                        urllib.parse.unquote(value)
+                                    )
                             return parsed_data
             except Exception as proxy_error:
                 tried_proxy = True
@@ -1500,7 +1551,9 @@ class PKCEFlow(anywidget.AnyWidget):
         # If both direct and proxy failed, raise the original error
         if tried_proxy:
             if self.debug:
-                self._log(f"Both direct and proxy connection failed. Raising original error: {str(error_to_retry)}")
+                self._log(
+                    f"Both direct and proxy connection failed. Raising original error: {str(error_to_retry)}"
+                )
             raise error_to_retry
         else:
             if self.debug:
@@ -1523,7 +1576,7 @@ class PKCEFlow(anywidget.AnyWidget):
                 self._log(f"Token request data: {data}")
 
             self._log(f"Exchanging code for token at {self.token_url}")
-            
+
             # Set up headers
             headers = {
                 "Content-Type": "application/x-www-form-urlencoded",
@@ -1535,18 +1588,20 @@ class PKCEFlow(anywidget.AnyWidget):
                 "Referer": self.authorization_url,
                 "Connection": "keep-alive",
             }
-            
+
             # Use the smart fallback helper method
             return self._make_request_with_fallback(
                 url=self.token_url,
                 method="POST",
                 data=data,
                 headers=headers,
-                use_requests=True
+                use_requests=True,
             )
 
         except requests.exceptions.HTTPError as e:
-            self._log(f"HTTP error in token request: {e.response.status_code} {e.response.reason}")
+            self._log(
+                f"HTTP error in token request: {e.response.status_code} {e.response.reason}"
+            )
             try:
                 error_text = e.response.text
                 self._log(f"Error response body: {error_text}")
@@ -1593,16 +1648,16 @@ class PKCEFlow(anywidget.AnyWidget):
                     "token": self.access_token,
                     "token_type_hint": "access_token",
                 }
-                
+
                 # Use the smart fallback helper method
                 response_data = self._make_request_with_fallback(
                     url=revoke_url,
                     method="POST",
                     data=data,
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
-                    use_requests=True
+                    use_requests=True,
                 )
-                
+
                 # Check if the response indicates success
                 if "error" not in response_data:
                     self._log("Token revoked successfully")
@@ -1610,7 +1665,9 @@ class PKCEFlow(anywidget.AnyWidget):
                     self._log(f"Token revocation returned error: {response_data}")
 
         except requests.exceptions.HTTPError as e:
-            self._log(f"HTTP error in token revocation: {e.response.status_code} {e.response.reason}")
+            self._log(
+                f"HTTP error in token revocation: {e.response.status_code} {e.response.reason}"
+            )
         except Exception as e:
             self._log(f"Error during logout: {str(e)}")
         finally:

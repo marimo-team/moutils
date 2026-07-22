@@ -392,7 +392,13 @@ class ShellWidget(anywidget.AnyWidget):
     working_directory = traitlets.Unicode(".").tag(sync=True)
     theme = traitlets.Unicode("dark").tag(sync=True)
 
-    def __init__(self, command: str, working_directory: str = ".", run: bool = False, theme: str = "dark"):
+    def __init__(
+        self,
+        command: str,
+        working_directory: str = ".",
+        run: bool = False,
+        theme: str = "dark",
+    ):
         super().__init__()
         self.command = command
         self.working_directory = working_directory
@@ -615,7 +621,9 @@ class ShellWidget(anywidget.AnyWidget):
         return _wrap_marimo(instance, *args, **kwargs)
 
 
-def shell(command: str, working_directory: str = ".", run: bool = False, theme: str = "dark") -> ShellWidget:
+def shell(
+    command: str, working_directory: str = ".", run: bool = False, theme: str = "dark"
+) -> ShellWidget:
     """
     Create a shell command widget.
 

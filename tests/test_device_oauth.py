@@ -4,9 +4,11 @@ import json
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import urllib.parse
+import urllib.error
 import re
 import time
 from typing import Dict, Any, Optional, List, Tuple
+from unittest import mock
 
 from moutils.oauth import DeviceFlow
 
@@ -445,3 +447,134 @@ class TestDeviceFlow:
         assert flow.user_code == ""
         assert flow.access_token == ""
         assert flow.error_message == ""
+
+
+class _FakeResponse:
+    """Minimal stand-in for an ``http.client.HTTPResponse`` context manager."""
+
+    def __init__(self, body: str, content_type: str):
+        self._body = body.encode("utf-8")
+        self._content_type = content_type
+
+    def __enter__(self) -> "_FakeResponse":
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self._body
+
+    def getheader(self, name: str, default: str = "") -> str:
+        if name == "Content-Type":
+            return self._content_type
+        return default
+
+
+class TestDeviceFlowProxyRetry:
+    """Regression tests for the proxy-retry fallback in ``_request_token``.
+
+    The proxy branch previously referenced undefined names (``use_requests``,
+    ``method``, ``url``, ``headers``) and would raise ``NameError`` the moment
+    the direct connection failed and a proxy was configured. These tests
+    exercise that exact path.
+    """
+
+    def _make_flow(self) -> DeviceFlow:
+        flow = DeviceFlow(
+            provider="test_provider",
+            client_id="test_client_id",
+            verification_uri="https://example.com/device",
+            device_code_url="https://example.com/device/code",
+            token_url="https://example.com/token",
+            debug=True,
+        )
+        # When marimo is installed, ``DeviceFlow.__new__`` returns a
+        # ``marimo.ui.anywidget`` wrapper; the real widget (the ``self`` that
+        # ``_request_token`` runs against) is exposed as ``.widget``. Operate on
+        # the underlying widget so ``self.proxy`` is actually visible.
+        widget = getattr(flow, "widget", flow)
+        widget.device_code = "test_device_code"
+        # DeviceFlow reads ``self.proxy`` dynamically via ``hasattr``.
+        widget.proxy = "proxy.internal:8080"
+        return widget
+
+    def test_proxy_retry_returns_token_on_json_response(self):
+        """Direct connection fails -> proxy retry succeeds with a JSON body."""
+        flow = self._make_flow()
+        token = {"access_token": "abc123", "token_type": "bearer"}
+
+        fake_opener = mock.Mock()
+        fake_opener.open.return_value = _FakeResponse(
+            json.dumps(token), "application/json"
+        )
+
+        with (
+            mock.patch(
+                "urllib.request.urlopen",
+                side_effect=urllib.error.URLError("direct connection refused"),
+            ),
+            mock.patch(
+                "urllib.request.build_opener", return_value=fake_opener
+            ) as build_opener,
+        ):
+            result = flow._request_token()
+
+        assert result == token
+        # The retry must have actually gone through the proxy opener.
+        assert build_opener.called
+        assert fake_opener.open.called
+
+    def test_proxy_retry_returns_token_on_form_encoded_response(self):
+        """Direct connection fails -> proxy retry parses a form-encoded body."""
+        flow = self._make_flow()
+
+        fake_opener = mock.Mock()
+        fake_opener.open.return_value = _FakeResponse(
+            "access_token=abc123&token_type=bearer",
+            "application/x-www-form-urlencoded",
+        )
+
+        with (
+            mock.patch(
+                "urllib.request.urlopen",
+                side_effect=urllib.error.URLError("direct connection refused"),
+            ),
+            mock.patch("urllib.request.build_opener", return_value=fake_opener),
+        ):
+            result = flow._request_token()
+
+        assert result == {"access_token": "abc123", "token_type": "bearer"}
+
+    def test_proxy_retry_failure_reraises_original_error(self):
+        """If both direct and proxy fail, the original error is surfaced."""
+        flow = self._make_flow()
+
+        fake_opener = mock.Mock()
+        fake_opener.open.side_effect = urllib.error.URLError("proxy also down")
+
+        with (
+            mock.patch(
+                "urllib.request.urlopen",
+                side_effect=urllib.error.URLError("direct connection refused"),
+            ),
+            mock.patch("urllib.request.build_opener", return_value=fake_opener),
+        ):
+            result = flow._request_token()
+
+        # The outer handler converts the re-raised original error into a
+        # structured error response rather than crashing with NameError.
+        assert result["error"] == "request_error"
+
+    def test_no_proxy_configured_does_not_hit_proxy_branch(self):
+        """Without a proxy, a failed direct connection surfaces cleanly."""
+        flow = self._make_flow()
+        flow.proxy = ""  # no proxy configured
+
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError("direct connection refused"),
+        ):
+            result = flow._request_token()
+
+        assert result["error"] == "request_error"
