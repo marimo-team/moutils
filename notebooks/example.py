@@ -356,6 +356,7 @@ def _(Slot):
         on_mouseout=lambda: print("mouse left"),
         on_dblclick=lambda e: print("double-clicked!", e),
     )
+    slot
     return
 
 
@@ -376,6 +377,7 @@ def _(CopyToClipboard):
         button_text="Copy greeting",
         success_text="Copied!",
     )
+    copy_widget
     return
 
 

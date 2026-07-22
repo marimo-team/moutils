@@ -198,6 +198,4 @@ def test_js_syntax_valid(js_file):
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, (
-        f"{js_file.name} has syntax errors:\n{result.stderr}"
-    )
+    assert result.returncode == 0, f"{js_file.name} has syntax errors:\n{result.stderr}"

@@ -23,6 +23,12 @@ dev = ["marimo"]
 [dependency-groups]
 dev = ["marimo", "pytest"]
 
+[tool.ruff.lint.per-file-ignores]
+# This snippet is injected verbatim into an `async def _():` marimo/Pyodide
+# notebook cell (see demos/cloudflare/scripts/inject_micropip.py), where
+# top-level `await` is a valid execution environment. Ignore F704 here only.
+"demos/cloudflare/scripts/install_local_moutils.py" = ["F704"]
+
 [tool.marimo.runtime]
 pythonpath = ["src"]
 

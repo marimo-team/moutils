@@ -10,7 +10,9 @@
 import marimo
 
 __generated_with = "0.14.10"
-app = marimo.App(width="full", app_title="Cloudflare Notebook", auto_download=["ipynb", "html"])
+app = marimo.App(
+    width="full", app_title="Cloudflare Notebook", auto_download=["ipynb", "html"]
+)
 
 
 ###############
@@ -35,7 +37,11 @@ def _():
         if not token or token.strip() == "":
             print("Please login using the button above")
             return []
-        request_url = f"{proxy}/client/v4/accounts" if is_wasm else "https://api.cloudflare.com/client/v4/accounts"
+        request_url = (
+            f"{proxy}/client/v4/accounts"
+            if is_wasm
+            else "https://api.cloudflare.com/client/v4/accounts"
+        )
         headers = {"Authorization": f"Bearer {token}"}
         try:
             request = Request(request_url, headers=headers)
@@ -43,9 +49,26 @@ def _():
             return res.get("result", []) or []
         except Exception as e:
             print("Token invalid - Please login using the button above")
-            if debug: print("[DEBUG] Exception:", e)
+            if debug:
+                print("[DEBUG] Exception:", e)
             return []
-    return PKCEFlow, Request, debug, get_accounts, is_wasm, json, mo, moutils, proxy, requests, sys, urllib, urlopen, warnings
+
+    return (
+        PKCEFlow,
+        Request,
+        debug,
+        get_accounts,
+        is_wasm,
+        json,
+        mo,
+        moutils,
+        proxy,
+        requests,
+        sys,
+        urllib,
+        urlopen,
+        warnings,
+    )
 
 
 @app.cell(hide_code=True)
@@ -59,7 +82,10 @@ def _(PKCEFlow):
 @app.cell(hide_code=True)
 async def _(debug, df, get_accounts, mo):
     # Login Stub - click to view code
-    if debug: print(f"[DEBUG] Access token (truncated to 20 chars): {df.access_token[:20] + '...' if df.access_token else 'None'}")
+    if debug:
+        print(
+            f"[DEBUG] Access token (truncated to 20 chars): {df.access_token[:20] + '...' if df.access_token else 'None'}"
+        )
     accounts = await get_accounts(df.access_token)
     radio = mo.ui.radio(options=[a["name"] for a in accounts], label="Select Account")
     return accounts, radio
@@ -69,7 +95,11 @@ async def _(debug, df, get_accounts, mo):
 def _(accounts, df, mo, radio):
     # Select Account Stub - click to view code
     account_name = radio.value if radio.value else None
-    account_id = (next((a["id"] for a in accounts if a["name"] == account_name), None) if accounts else None)
+    account_id = (
+        next((a["id"] for a in accounts if a["name"] == account_name), None)
+        if accounts
+        else None
+    )
     mo.hstack(
         [
             radio,
@@ -92,8 +122,12 @@ def _(accounts, df, mo, radio):
 @app.cell
 def _(account_id, account_name, df):
     print("Hello, World! 🌎")
-    print(f"Cloudflare API Token:    {df.access_token[:20] + '...' if df.access_token else 'None'}")
-    print(f"Cloudflare Account ID:   {account_id[:20] + '...' if account_id else 'None'}")
+    print(
+        f"Cloudflare API Token:    {df.access_token[:20] + '...' if df.access_token else 'None'}"
+    )
+    print(
+        f"Cloudflare Account ID:   {account_id[:20] + '...' if account_id else 'None'}"
+    )
     print(f"Cloudflare Account Name: {account_name if account_name else 'None'}")
     return
 
