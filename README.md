@@ -281,6 +281,57 @@ import moutils
 moutils.screenshot(locator="#my-chart", filename="chart.png")
 ```
 
+## Database connections
+
+`moutils.db` provides read-only [DB-API 2.0](https://peps.python.org/pep-0249/)
+connections over REST query APIs. Assign one to a notebook variable and marimo
+detects it as a SQL engine, so you can query it directly from SQL cells.
+
+| Connection | Description |
+|------------|-------------|
+| `PostHogConnection` | Query a PostHog project via its HogQL API (`clickhouse` dialect) |
+| `DatasetteConnection` | Query one database of a [Datasette](https://datasette.io) instance (`sqlite` dialect) |
+
+`PostHogConnection` uses `requests` (already a base dependency).
+`DatasetteConnection` uses `httpx`, available via the optional extra:
+
+```sh
+pip install moutils[db]
+```
+
+### PostHogConnection
+
+Assign the connection in a Python cell:
+
+```python
+from moutils.db import PostHogConnection
+
+posthog = PostHogConnection(api_key="phx_...", project_id=123)
+```
+
+marimo now picks it up as a SQL engine, so you can query it from a SQL cell:
+
+```sql
+SELECT event, count() FROM events GROUP BY event
+```
+
+### DatasetteConnection
+
+```python
+from moutils.db import DatasetteConnection
+
+datasette = DatasetteConnection("https://datasette.io", "content", token="...")
+```
+
+Then query it from a SQL cell:
+
+```sql
+SELECT * FROM tables LIMIT 10
+```
+
+A connection is scoped to one database; `datasette.databases()` lists the others
+on the instance and `datasette.for_database("everest")` opens a sibling.
+
 ## Development
 
 We use [uv](https://github.com/astral-sh/uv) for development.

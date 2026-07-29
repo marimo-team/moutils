@@ -17,11 +17,23 @@ version = "0.4.4"
 # If you're using `uv` for development, feel free to remove this section.
 [project.optional-dependencies]
 dev = ["marimo"]
+# Database connections (moutils.db). PostHog uses `requests` (a base dep);
+# Datasette needs httpx. Install with `pip install moutils[db]`.
+db = ["httpx>=0.27"]
 
 # Dependency groups (recognized by `uv`). For more details, visit:
 # https://peps.python.org/pep-0735/
 [dependency-groups]
-dev = ["marimo", "pytest"]
+dev = [
+  "marimo",
+  "pytest",
+  # moutils.db test stack
+  "httpx>=0.27",
+  "responses>=0.25",
+  "pytest-httpx>=0.30",
+  "datasette>=0.64,<1",
+  "datasette-auth-tokens>=0.3,<0.4",
+]
 
 [tool.ruff.lint.per-file-ignores]
 # This snippet is injected verbatim into an `async def _():` marimo/Pyodide
@@ -34,3 +46,4 @@ pythonpath = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+addopts = "--import-mode=importlib"
