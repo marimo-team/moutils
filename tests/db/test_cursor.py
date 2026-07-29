@@ -20,6 +20,9 @@ class FakeConnection(Connection):
     def _fetch(self, query):
         return self._triple
 
+    def schema_rows(self):
+        return []
+
 
 def cursor_for(triple):
     return FakeConnection(triple).cursor()
@@ -120,3 +123,15 @@ def test_parameters_none_or_empty_ok(five_rows):
     cur = cursor_for(five_rows)
     cur.execute("SELECT 1", parameters=None)
     cur.execute("SELECT 1", parameters=[])  # empty is falsy -> allowed
+
+
+def test_connection_is_abstract():
+    # A subclass missing a hook can't be instantiated (Connection is an ABC).
+    class Incomplete(Connection):
+        dialect = "fake"
+
+        def _fetch(self, query):  # schema_rows still missing
+            return ([], [], None)
+
+    with pytest.raises(TypeError):
+        Incomplete()

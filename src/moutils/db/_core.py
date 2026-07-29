@@ -16,6 +16,7 @@ Subclasses must set ``dialect`` and implement:
     schema_rows() -> list[{"table", "column", "type"}]  # schema discovery
 """
 
+from abc import ABC, abstractmethod
 from typing import Any, Sequence
 
 
@@ -86,8 +87,13 @@ class Cursor:
         self._pos = 0
 
 
-class Connection:
-    """DB-API 2.0 connection base for read-only REST-backed data sources."""
+class Connection(ABC):
+    """DB-API 2.0 connection base for read-only REST-backed data sources.
+
+    Abstract: a subclass must set ``dialect`` and implement the ``_fetch`` and
+    ``schema_rows`` hooks below, so an incomplete connector fails at instantiation
+    rather than at query time.
+    """
 
     dialect: str = ""
 
@@ -104,8 +110,10 @@ class Connection:
         pass
 
     # --- hooks a connector must provide -------------------------------------
+    @abstractmethod
     def _fetch(self, query: str) -> tuple[list[Any], list[Any], Any]:
-        raise NotImplementedError
+        """Return ``(columns, rows, types | None)`` for the shared cursor."""
 
+    @abstractmethod
     def schema_rows(self) -> list[dict[str, Any]]:
-        raise NotImplementedError
+        """Return ``{"table", "column", "type"}`` rows describing the schema."""
