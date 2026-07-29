@@ -19,7 +19,7 @@ import httpx
 import pytest
 from datasette.app import Datasette
 
-from moutils.db import DatasetteConnection
+from moutils.db.datasette import DatasetteConnection
 
 # ---------------------------------------------------------------------------
 # PostHog fixtures — frozen DatabaseSchemaQuery / HogQLQuery replies.

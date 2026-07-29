@@ -284,8 +284,9 @@ moutils.screenshot(locator="#my-chart", filename="chart.png")
 ## Database connections
 
 `moutils.db` provides read-only [DB-API 2.0](https://peps.python.org/pep-0249/)
-connections over REST query APIs. Assign one to a notebook variable and marimo
-detects it as a SQL engine, so you can query it directly from SQL cells.
+connections over REST query APIs. Import one from its submodule, assign it to a
+notebook variable, and marimo detects it as a SQL engine — so you can query it
+directly from SQL cells.
 
 | Connection | Description |
 |------------|-------------|
@@ -304,7 +305,7 @@ pip install moutils[db]
 Assign the connection in a Python cell:
 
 ```python
-from moutils.db import PostHogConnection
+from moutils.db.posthog import PostHogConnection
 
 posthog = PostHogConnection(api_key="phx_...", project_id=123)
 ```
@@ -318,7 +319,7 @@ SELECT event, count() FROM events GROUP BY event
 ### DatasetteConnection
 
 ```python
-from moutils.db import DatasetteConnection
+from moutils.db.datasette import DatasetteConnection
 
 datasette = DatasetteConnection("https://datasette.io", "content", token="...")
 ```

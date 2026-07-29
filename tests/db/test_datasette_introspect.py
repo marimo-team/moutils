@@ -1,6 +1,6 @@
 """Instance introspection: enumerate databases via /-/databases.json."""
 
-from moutils.db import DatasetteConnection, databases
+from moutils.db.datasette import DatasetteConnection, databases
 
 _DBS = [
     {"name": "earthquakes", "route": "earthquakes", "is_memory": False},

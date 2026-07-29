@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from moutils.db import DatasetteConnection
+from moutils.db.datasette import DatasetteConnection
 
 
 def test_execute_builds_request_and_parses(httpx_mock):

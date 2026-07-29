@@ -6,8 +6,11 @@ import pytest
 import requests
 import responses
 
-from moutils.db import PostHogConnection
-from moutils.db.posthog import _rows_from_schema_response, schema_rows
+from moutils.db.posthog import (
+    PostHogConnection,
+    _rows_from_schema_response,
+    schema_rows,
+)
 
 
 @responses.activate

@@ -6,7 +6,7 @@ built on ``moutils.db.Connection`` so this exercises the shared cursor directly.
 
 import pytest
 
-from moutils.db import Connection
+from moutils.db._core import Connection
 
 
 class FakeConnection(Connection):

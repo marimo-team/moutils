@@ -37,6 +37,6 @@ def test_sql_error_real(live_conn):
 
 def test_databases_real(live_conn):
     # live_conn activates routing into the in-process Datasette (serving one db).
-    from moutils.db import databases
+    from moutils.db.datasette import databases
 
     assert databases("http://datasette.test") == ["sample"]

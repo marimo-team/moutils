@@ -6,7 +6,7 @@ import pytest
 import requests
 import responses
 
-from moutils.db import PostHogConnection
+from moutils.db.posthog import PostHogConnection
 
 
 @responses.activate

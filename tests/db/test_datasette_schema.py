@@ -2,7 +2,7 @@
 
 import pytest
 
-from moutils.db import DatasetteConnection
+from moutils.db.datasette import DatasetteConnection
 
 
 def _schema_response(rows):

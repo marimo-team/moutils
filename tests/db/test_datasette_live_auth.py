@@ -7,7 +7,7 @@ Confirms end-to-end that the connector's `token` (sent as `Authorization: Bearer
 import httpx
 import pytest
 
-from moutils.db import DatasetteConnection
+from moutils.db.datasette import DatasetteConnection
 
 from .conftest import LIVE_TOKEN
 
