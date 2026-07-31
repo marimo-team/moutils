@@ -6,9 +6,14 @@ import requests
 
 from ._core import Connection
 
+_MAX_PAGE_SIZE = 50_000
+
 
 class PostHogConnection(Connection):
-    """Connect to a PostHog project with a personal API key."""
+    """Connect to a PostHog project with a personal API key.
+
+    ``page_size`` caps each query result and must be from 1 through 50,000.
+    """
 
     dialect = "clickhouse"
 
@@ -16,10 +21,17 @@ class PostHogConnection(Connection):
         self,
         api_key: str,
         project_id: str | int,
+        *,
+        page_size: int,
         host: str = "https://us.posthog.com",
     ) -> None:
+        if isinstance(page_size, bool) or not isinstance(page_size, int):
+            raise TypeError("page_size must be an integer")
+        if not 1 <= page_size <= _MAX_PAGE_SIZE:
+            raise ValueError(f"page_size must be between 1 and {_MAX_PAGE_SIZE:,}")
         self._api_key = api_key
         self._project_id = str(project_id)  # accept int, normalise for the URL
+        self._page_size = page_size
         self._host = host.rstrip("/")
 
     def _run_query(self, query: dict) -> dict:
@@ -39,7 +51,9 @@ class PostHogConnection(Connection):
         return data
 
     def _run_hogql(self, query: str) -> dict:
-        return self._run_query({"kind": "HogQLQuery", "query": query})
+        query = query.strip().rstrip(";").rstrip()
+        paged_query = f"SELECT * FROM ({query}) AS moutils_page LIMIT {self._page_size}"
+        return self._run_query({"kind": "HogQLQuery", "query": paged_query})
 
     def _fetch(self, query: str) -> tuple[list[Any], list[Any], Any]:
         """Return columns, rows, and types for the shared cursor."""

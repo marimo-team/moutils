@@ -19,7 +19,7 @@ def test_schema_rows_from_database_schema_query(schema_response):
         "https://us.posthog.com/api/projects/42/query/",
         json=schema_response,
     )
-    rows = schema_rows(PostHogConnection(api_key="k", project_id=42))
+    rows = schema_rows(PostHogConnection(api_key="k", project_id=42, page_size=1_000))
 
     # outbound body is the schema-query kind
     body = json.loads(responses.calls[0].request.body)
@@ -40,7 +40,7 @@ def test_http_error_propagates():
         status=500,
     )
     with pytest.raises(requests.HTTPError):
-        schema_rows(PostHogConnection(api_key="k", project_id=42))
+        schema_rows(PostHogConnection(api_key="k", project_id=42, page_size=1_000))
 
 
 @responses.activate
@@ -50,7 +50,7 @@ def test_garbage_shape_raises():
         json={"unexpected": "shape"},
     )
     with pytest.raises(ValueError):
-        schema_rows(PostHogConnection(api_key="k", project_id=42))
+        schema_rows(PostHogConnection(api_key="k", project_id=42, page_size=1_000))
 
 
 @pytest.mark.parametrize(
@@ -80,6 +80,6 @@ def test_connection_schema_rows_method(schema_response):
         "https://us.posthog.com/api/projects/42/query/",
         json=schema_response,
     )
-    rows = PostHogConnection(api_key="k", project_id=42).schema_rows()
+    rows = PostHogConnection(api_key="k", project_id=42, page_size=1_000).schema_rows()
     assert {r["table"] for r in rows} == {"events", "persons"}
     assert len(rows) == 6

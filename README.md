@@ -306,10 +306,15 @@ Create the connection in a Python cell. Use a PostHog personal API key.
 ```python
 from moutils.db.posthog import PostHogConnection
 
-posthog = PostHogConnection(api_key="phx_...", project_id=123)
+posthog = PostHogConnection(
+    api_key="phx_...",
+    project_id=123,
+    page_size=10_000,
+)
 ```
 
-Then run HogQL in a SQL cell:
+`page_size` is required because PostHog otherwise returns at most 100 rows. Use a
+value from 1 through 50,000. Then run HogQL in a SQL cell:
 
 ```sql
 SELECT event, count() FROM events GROUP BY event
