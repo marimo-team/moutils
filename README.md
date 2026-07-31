@@ -281,6 +281,65 @@ import moutils
 moutils.screenshot(locator="#my-chart", filename="chart.png")
 ```
 
+## Database connections
+
+`moutils.db` provides read-only REST connections for marimo SQL cells. Import a
+connection and assign it to a notebook variable. marimo detects the variable as
+a SQL engine.
+
+| Connection | Description |
+|------------|-------------|
+| `PostHogConnection` | Query a PostHog project via its HogQL API (`clickhouse` dialect) |
+| `DatasetteConnection` | Query one database of a [Datasette](https://datasette.io) instance (`sqlite` dialect) |
+
+`PostHogConnection` uses the base `requests` dependency. Install the optional
+`db` dependency for `DatasetteConnection`:
+
+```sh
+pip install "moutils[db]"
+```
+
+### PostHogConnection
+
+Create the connection in a Python cell. Use a PostHog personal API key.
+
+```python
+from moutils.db.posthog import PostHogConnection
+
+posthog = PostHogConnection(
+    api_key="phx_...",
+    project_id=123,
+    page_size=10_000,
+)
+```
+
+`page_size` is required because PostHog otherwise returns at most 100 rows. Use a
+value from 1 through 50,000. Then run HogQL in a SQL cell:
+
+```sql
+SELECT event, count() FROM events GROUP BY event
+```
+
+### DatasetteConnection
+
+```python
+from moutils.db.datasette import DatasetteConnection
+
+datasette = DatasetteConnection("https://datasette.io", "content", token="...")
+```
+
+Then run SQLite SQL in a SQL cell:
+
+```sql
+SELECT * FROM tables LIMIT 10
+```
+
+A connection uses one database. Use `datasette.databases()` to list the database
+routes. Use `datasette.for_database("everest")` to connect to another database.
+
+These connections do not support bound parameters. Use static or trusted SQL.
+Do not insert untrusted values into SQL strings.
+
 ## Development
 
 We use [uv](https://github.com/astral-sh/uv) for development.
