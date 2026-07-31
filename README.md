@@ -283,7 +283,7 @@ moutils.screenshot(locator="#my-chart", filename="chart.png")
 
 ## Database connections
 
-`moutils.db` provides read-only REST connections for marimo SQL cells. Import a
+`moutils.db` provides DB-API-compatible adapters for marimo SQL cells. Import a
 connection and assign it to a notebook variable. marimo detects the variable as
 a SQL engine.
 
@@ -291,6 +291,13 @@ a SQL engine.
 |------------|-------------|
 | `PostHogConnection` | Query a PostHog project via its HogQL API (`clickhouse` dialect) |
 | `DatasetteConnection` | Query one database of a [Datasette](https://datasette.io) instance (`sqlite` dialect) |
+| `D1Connection` | Query a Cloudflare D1 database through its REST API |
+| `ElasticsearchConnection` | Query Elasticsearch through its SQL API |
+| `OpenSearchConnection` | Query OpenSearch through its SQL plugin |
+| `TimestreamConnection` | Query Amazon Timestream for LiveAnalytics |
+| `DuneConnection` | Execute raw DuneSQL through `dune-client` |
+| `QueryConnection` | Adapt any `query(sql)` callable that returns tabular data |
+| `ConnectorXConnection` | Adapt `connectorx.read_sql` with inferred dialects |
 
 `PostHogConnection` uses the base `requests` dependency. Install the optional
 `db` dependency for `DatasetteConnection`:
@@ -337,8 +344,107 @@ SELECT * FROM tables LIMIT 10
 A connection uses one database. Use `datasette.databases()` to list the database
 routes. Use `datasette.for_database("everest")` to connect to another database.
 
+### QueryConnection
+
+Use `QueryConnection` when a client already has a function that accepts SQL and
+returns records, a result tuple, or a pandas, Polars, or PyArrow table:
+
+```python
+from moutils.db.query import QueryConnection
+
+warehouse = QueryConnection(
+    lambda sql: client.query(sql),
+    dialect="postgres",
+)
+```
+
+### ConnectorXConnection
+
+```sh
+pip install connectorx pandas
+```
+
+```python
+from moutils.db.connectorx import ConnectorXConnection
+
+warehouse = ConnectorXConnection("postgresql://user:pass@host/database")
+```
+
+The SQL dialect is inferred from recognized connection URL schemes. Pass
+`dialect=` explicitly for federated or custom URLs. Extra keyword arguments are
+forwarded to `connectorx.read_sql`. Install Polars separately when using
+`return_type="polars"`.
+
+### Cloudflare D1
+
+```python
+from moutils.db.d1 import D1Connection
+
+d1 = D1Connection(
+    account_id="...",
+    database_id="...",
+    api_token="...",  # Prefer a token with only D1 Read permission.
+)
+```
+
+### Elasticsearch and OpenSearch
+
+The adapters wrap configured official clients and follow SQL result cursors to
+retrieve every page:
+
+```sh
+pip install elasticsearch opensearch-py
+```
+
+```python
+from elasticsearch import Elasticsearch
+from moutils.db.elasticsearch import ElasticsearchConnection
+
+elastic = ElasticsearchConnection(Elasticsearch("https://localhost:9200"))
+```
+
+```python
+from opensearchpy import OpenSearch
+from moutils.db.opensearch import OpenSearchConnection
+
+opensearch = OpenSearchConnection(OpenSearch("https://localhost:9200"))
+```
+
+### Amazon Timestream
+
+```sh
+pip install boto3
+```
+
+```python
+import boto3
+from moutils.db.timestream import TimestreamConnection
+
+timestream = TimestreamConnection(boto3.client("timestream-query"))
+```
+
+The adapter follows `NextToken` pages and decodes scalar and nested Timestream
+values.
+
+### Dune
+
+```sh
+pip install dune-client
+```
+
+```python
+from dune_client.client import DuneClient
+from moutils.db.dune import DuneConnection
+
+dune = DuneConnection(DuneClient.from_env())
+```
+
+The adapter submits raw DuneSQL, waits for completion, and retrieves every
+result page.
+
 These connections do not support bound parameters. Use static or trusted SQL.
-Do not insert untrusted values into SQL strings.
+Do not insert untrusted values into SQL strings. Provider adapters that receive
+an existing client leave that client open by default.
 
 ## Development
 

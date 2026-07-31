@@ -127,13 +127,18 @@ def test_parameters_none_or_empty_ok(five_rows):
     cur.execute("SELECT 1", parameters=[])  # empty is falsy -> allowed
 
 
-def test_connection_is_abstract():
-    # A subclass missing a hook can't be instantiated (Connection is an ABC).
+def test_connection_requires_fetch_but_schema_is_optional():
     class Incomplete(Connection):
         dialect = "fake"
 
-        def _fetch(self, query):  # schema_rows still missing
-            return ([], [], None)
-
     with pytest.raises(TypeError):
         Incomplete()
+
+    class Complete(Connection):
+        dialect = "fake"
+
+        def _fetch(self, query):
+            return ([], [], None)
+
+    connection = Complete()
+    assert connection.schema_rows() == []
