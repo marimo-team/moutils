@@ -1,4 +1,4 @@
-"""Shared DB-API-compatible classes for the REST connections."""
+"""Shared DB-API-compatible classes for marimo query adapters."""
 
 from abc import ABC, abstractmethod
 from typing import Any, Sequence
@@ -77,17 +77,17 @@ class Cursor:
 
 
 class Connection(ABC):
-    """Base class for read-only REST connections."""
+    """Base class for marimo-compatible query connections."""
 
     dialect: str = ""
 
     def cursor(self) -> Cursor:
         return Cursor(self)
 
-    def commit(self) -> None:  # no-op: moutils.db connectors are read-only
+    def commit(self) -> None:  # no-op: adapters do not manage transactions
         pass
 
-    def rollback(self) -> None:  # no-op: moutils.db connectors are read-only
+    def rollback(self) -> None:  # no-op: adapters do not manage transactions
         pass
 
     def close(self) -> None:
@@ -97,6 +97,11 @@ class Connection(ABC):
     def _fetch(self, query: str) -> tuple[list[Any], list[Any], Any]:
         """Return ``(columns, rows, types | None)`` for the shared cursor."""
 
-    @abstractmethod
     def schema_rows(self) -> list[dict[str, Any]]:
-        """Return ``{"table", "column", "type"}`` rows describing the schema."""
+        """Return ``{"table", "column", "type"}`` rows describing the schema.
+
+        Schema discovery is optional because marimo's generic DB-API engine does
+        not currently consume it. Connections with a cheap metadata endpoint can
+        override this method for callers that want to inspect the source directly.
+        """
+        return []
