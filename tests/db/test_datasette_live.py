@@ -1,10 +1,4 @@
-"""End-to-end against a REAL, in-process Datasette instance — no mocked JSON.
-
-The ``live_conn`` fixture (see conftest) routes the connector's real httpx calls
-into Datasette's own ASGI test client, which executes real SQL against a real
-temp SQLite database. This is the payoff of choosing Datasette: the whole stack
-(request building, the query engine, response parsing) runs for real locally.
-"""
+"""End-to-end tests with an in-process Datasette instance."""
 
 import httpx
 import pytest

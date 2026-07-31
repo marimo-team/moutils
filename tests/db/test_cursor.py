@@ -1,8 +1,4 @@
-"""Generic cursor parsing + paging — connector-agnostic, no HTTP.
-
-Feeds canned ``(columns, rows, types)`` triples through a minimal fake connection
-built on ``moutils.db.Connection`` so this exercises the shared cursor directly.
-"""
+"""Tests for the shared cursor."""
 
 import pytest
 
@@ -74,6 +70,12 @@ def test_bare_string_type_passes_through():
     assert [d[1] for d in cur.description] == ["Int64", "String"]
 
 
+def test_missing_type_keeps_column_in_description():
+    cur = cursor_for((["a", "b"], [[1, 2]], ["Int64"])).execute("SELECT 1")
+    assert [d[0] for d in cur.description] == ["a", "b"]
+    assert [d[1] for d in cur.description] == ["Int64", None]
+
+
 def test_rowcount_matches_rows(five_rows):
     cur = cursor_for(five_rows).execute("SELECT 1")
     assert cur.rowcount == 5
@@ -115,7 +117,7 @@ def test_close_empties_rows_and_resets_pos(five_rows):
 
 def test_parameters_guard_raises(five_rows):
     cur = cursor_for(five_rows)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(NotImplementedError, match="do not support bound parameters"):
         cur.execute("SELECT 1", parameters=[1])
 
 

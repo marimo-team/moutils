@@ -1,4 +1,4 @@
-"""Schema discovery — DatabaseSchemaQuery parsing; fails early, no fallback."""
+"""Tests for PostHog schema discovery."""
 
 import json
 

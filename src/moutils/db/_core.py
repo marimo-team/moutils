@@ -1,27 +1,20 @@
-"""Shared DB-API 2.0 machinery for the moutils database connectors.
-
-marimo detects any object exposing the DB-API surface (``cursor``/``commit``/
-``rollback``/``close`` + an executable cursor) as a SQL engine, so assigning an
-instance to a notebook variable makes the source available in SQL cells. The
-class attr ``dialect`` tells marimo which SQL flavour to parse.
-
-The cursor knows nothing about any particular data source: ``execute`` delegates
-to the owning connection's ``_fetch(query) -> (columns, rows, types)`` and builds
-the DB-API ``description`` from that triple. All paging/fetch state lives here, so
-a connector only has to implement transport + result-mapping.
-
-Subclasses must set ``dialect`` and implement:
-
-    _fetch(query) -> (columns, rows, types | None)   # used by the cursor
-    schema_rows() -> list[{"table", "column", "type"}]  # schema discovery
-"""
+"""Shared DB-API-compatible classes for the REST connections."""
 
 from abc import ABC, abstractmethod
 from typing import Any, Sequence
 
 
+def _type_code(types: list[Any], index: int) -> Any:
+    if index >= len(types):
+        return None
+    type_ = types[index]
+    if isinstance(type_, (list, tuple)) and len(type_) > 1:
+        return type_[1]
+    return type_
+
+
 class Cursor:
-    """Minimal DB-API 2.0 cursor backed by a connection's ``_fetch``."""
+    """A minimal DB-API-compatible cursor."""
 
     def __init__(self, connection: Any) -> None:
         self._connection = connection
@@ -33,18 +26,14 @@ class Cursor:
         self._pos = 0
 
     def execute(self, query: str, parameters: Sequence[Any] | None = None) -> "Cursor":
-        # Parameter binding isn't implemented; reject it loudly rather than
-        # silently ignoring `parameters`.
+        # marimo passes an empty tuple when a query has no parameters.
         if parameters:
             raise NotImplementedError(
-                "moutils.db cursors do not support parameter binding; "
-                "interpolate values into the SQL query string yourself."
+                "moutils.db cursors do not support bound parameters. "
+                "Pass a query without parameters."
             )
         columns, rows, types = self._connection._fetch(query)
-        # `types`, when present, is a list of [name, type] pairs (HogQL) or bare
-        # type strings; connectors with no per-column types return None.
-        if not types:
-            types = [None] * len(columns)
+        types = list(types or ())
         self._rows = [list(row) for row in rows]
         self._pos = 0
         self.rowcount = len(self._rows)
@@ -53,14 +42,14 @@ class Cursor:
         self.description = [
             (
                 str(name),
-                (t[1] if isinstance(t, (list, tuple)) and len(t) > 1 else t),
+                _type_code(types, index),
                 None,
                 None,
                 None,
                 None,
                 None,
             )
-            for name, t in zip(columns, types)
+            for index, name in enumerate(columns)
         ]
         return self
 
@@ -88,12 +77,7 @@ class Cursor:
 
 
 class Connection(ABC):
-    """DB-API 2.0 connection base for read-only REST-backed data sources.
-
-    Abstract: a subclass must set ``dialect`` and implement the ``_fetch`` and
-    ``schema_rows`` hooks below, so an incomplete connector fails at instantiation
-    rather than at query time.
-    """
+    """Base class for read-only REST connections."""
 
     dialect: str = ""
 
@@ -109,7 +93,6 @@ class Connection(ABC):
     def close(self) -> None:
         pass
 
-    # --- hooks a connector must provide -------------------------------------
     @abstractmethod
     def _fetch(self, query: str) -> tuple[list[Any], list[Any], Any]:
         """Return ``(columns, rows, types | None)`` for the shared cursor."""

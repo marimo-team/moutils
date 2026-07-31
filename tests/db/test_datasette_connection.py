@@ -1,4 +1,4 @@
-"""HTTP contract — verified with pytest-httpx (real request-building, no socket)."""
+"""Tests for the Datasette HTTP contract."""
 
 import httpx
 import pytest
@@ -28,7 +28,33 @@ def test_execute_builds_request_and_parses(httpx_mock):
     assert str(req.url).startswith("http://ds.test/content.json")
     assert req.url.params["sql"] == "select id, name from dogs"
     assert req.url.params["_shape"] == "arrays"
+    assert req.url.params["_extra"] == "columns"
     assert req.headers["Authorization"] == "Bearer sekret"
+
+
+def test_execute_follows_datasette_1_query_redirect(httpx_mock):
+    httpx_mock.add_response(
+        status_code=302,
+        headers={
+            "Location": "/content/-/query.json?sql=select+1&_shape=arrays&_extra=columns"
+        },
+    )
+    httpx_mock.add_response(
+        json={"ok": True, "columns": ["n"], "rows": [[1]], "truncated": False}
+    )
+
+    conn = DatasetteConnection("http://ds.test", "content", token="sekret")
+    assert conn.cursor().execute("select 1").fetchall() == [[1]]
+
+    requests = httpx_mock.get_requests()
+    assert requests[1].url.path == "/content/-/query.json"
+    assert requests[1].headers["Authorization"] == "Bearer sekret"
+
+
+def test_database_route_is_url_encoded(httpx_mock):
+    httpx_mock.add_response(json={"ok": True, "columns": [], "rows": []})
+    DatasetteConnection("http://ds.test", "one/two").cursor().execute("select 1")
+    assert httpx_mock.get_requests()[0].url.raw_path.startswith(b"/one%2Ftwo.json")
 
 
 def test_no_token_omits_auth_and_strips_trailing_slash(httpx_mock):
@@ -50,6 +76,12 @@ def test_truncated_emits_warning(httpx_mock):
     conn = DatasetteConnection("http://ds.test", "content")
     with pytest.warns(UserWarning, match="truncated"):
         conn.cursor().execute("select 1")
+
+
+def test_bad_query_shape_raises(httpx_mock):
+    httpx_mock.add_response(json={"ok": True, "rows": []})
+    with pytest.raises(ValueError, match="query response shape"):
+        DatasetteConnection("http://ds.test", "content").cursor().execute("select 1")
 
 
 @pytest.mark.parametrize("status", [400, 500])

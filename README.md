@@ -283,26 +283,25 @@ moutils.screenshot(locator="#my-chart", filename="chart.png")
 
 ## Database connections
 
-`moutils.db` provides read-only [DB-API 2.0](https://peps.python.org/pep-0249/)
-connections over REST query APIs. Import one from its submodule, assign it to a
-notebook variable, and marimo detects it as a SQL engine — so you can query it
-directly from SQL cells.
+`moutils.db` provides read-only REST connections for marimo SQL cells. Import a
+connection and assign it to a notebook variable. marimo detects the variable as
+a SQL engine.
 
 | Connection | Description |
 |------------|-------------|
 | `PostHogConnection` | Query a PostHog project via its HogQL API (`clickhouse` dialect) |
 | `DatasetteConnection` | Query one database of a [Datasette](https://datasette.io) instance (`sqlite` dialect) |
 
-`PostHogConnection` uses `requests` (already a base dependency).
-`DatasetteConnection` uses `httpx`, available via the optional extra:
+`PostHogConnection` uses the base `requests` dependency. Install the optional
+`db` dependency for `DatasetteConnection`:
 
 ```sh
-pip install moutils[db]
+pip install "moutils[db]"
 ```
 
 ### PostHogConnection
 
-Assign the connection in a Python cell:
+Create the connection in a Python cell. Use a PostHog personal API key.
 
 ```python
 from moutils.db.posthog import PostHogConnection
@@ -310,7 +309,7 @@ from moutils.db.posthog import PostHogConnection
 posthog = PostHogConnection(api_key="phx_...", project_id=123)
 ```
 
-marimo now picks it up as a SQL engine, so you can query it from a SQL cell:
+Then run HogQL in a SQL cell:
 
 ```sql
 SELECT event, count() FROM events GROUP BY event
@@ -324,14 +323,17 @@ from moutils.db.datasette import DatasetteConnection
 datasette = DatasetteConnection("https://datasette.io", "content", token="...")
 ```
 
-Then query it from a SQL cell:
+Then run SQLite SQL in a SQL cell:
 
 ```sql
 SELECT * FROM tables LIMIT 10
 ```
 
-A connection is scoped to one database; `datasette.databases()` lists the others
-on the instance and `datasette.for_database("everest")` opens a sibling.
+A connection uses one database. Use `datasette.databases()` to list the database
+routes. Use `datasette.for_database("everest")` to connect to another database.
+
+These connections do not support bound parameters. Use static or trusted SQL.
+Do not insert untrusted values into SQL strings.
 
 ## Development
 

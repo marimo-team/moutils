@@ -1,16 +1,4 @@
-"""Fixtures for the moutils.db connector tests.
-
-PostHog fixtures are frozen canned responses (no network, no account). Datasette
-has two flavours:
-
-* Mocked unit tests use ``httpx_mock`` (pytest-httpx) with canned JSON, mirroring
-  the PostHog ``responses`` tests.
-* The ``live_conn`` fixture wires a real, **in-process** Datasette instance:
-  outbound ``httpx`` requests from the connector are intercepted by pytest-httpx
-  and routed into Datasette's own ASGI test client (``ds.client``), which runs
-  real SQL against a real temp SQLite database. No mocked responses, no socket,
-  no subprocess — only the wire is bypassed.
-"""
+"""Shared fixtures for the database connection tests."""
 
 import asyncio
 import sqlite3
@@ -135,8 +123,12 @@ def live_conn(httpx_mock, ds):
         loop.close()
 
 
-# The token the authed in-process instance accepts (see `ds_authed`).
-LIVE_TOKEN = "s3cret-test-token"
+_LIVE_TOKEN = "s3cret-test-token"
+
+
+@pytest.fixture
+def live_token():
+    return _LIVE_TOKEN
 
 
 @pytest.fixture
@@ -144,7 +136,7 @@ def ds_authed(sample_db):
     """In-process Datasette locked down with datasette-auth-tokens.
 
     Anonymous requests are denied (`allow: {id: "*"}` requires an authenticated
-    actor); a request bearing LIVE_TOKEN authenticates as actor `demo`.
+    actor). The test token authenticates as actor ``demo``.
     """
     return Datasette(
         [str(sample_db)],
@@ -152,7 +144,7 @@ def ds_authed(sample_db):
             "allow": {"id": "*"},
             "plugins": {
                 "datasette-auth-tokens": {
-                    "tokens": [{"token": LIVE_TOKEN, "actor": {"id": "demo"}}]
+                    "tokens": [{"token": _LIVE_TOKEN, "actor": {"id": "demo"}}]
                 }
             },
         },

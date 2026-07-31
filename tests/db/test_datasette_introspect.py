@@ -1,4 +1,6 @@
-"""Instance introspection: enumerate databases via /-/databases.json."""
+"""Tests for Datasette database discovery."""
+
+import pytest
 
 from moutils.db.datasette import DatasetteConnection, databases
 
@@ -13,6 +15,17 @@ def test_databases_lists_routes_and_skips_memory(httpx_mock):
     httpx_mock.add_response(json=_DBS)
     assert databases("http://ds.test/") == ["earthquakes", "everest"]
     assert str(httpx_mock.get_requests()[0].url) == "http://ds.test/-/databases.json"
+
+
+def test_databases_accepts_datasette_1_envelope(httpx_mock):
+    httpx_mock.add_response(json={"ok": True, "databases": _DBS})
+    assert databases("http://ds.test") == ["earthquakes", "everest"]
+
+
+def test_databases_rejects_bad_shape(httpx_mock):
+    httpx_mock.add_response(json={"ok": True})
+    with pytest.raises(ValueError, match="databases response shape"):
+        databases("http://ds.test")
 
 
 def test_databases_sends_token(httpx_mock):

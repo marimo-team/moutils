@@ -1,14 +1,4 @@
-"""DB-API 2.0 connection over PostHog's HogQL query API.
-
-Built on :mod:`moutils.db._core`: paging/``description`` live in the shared
-``Cursor``, so this module only owns the HTTP transport, the HogQL result mapping
-(``_fetch``), and schema discovery.
-
-Schema discovery goes through ``DatabaseSchemaQuery`` — the same authed POST the
-PostHog UI uses to build its schema tree. It does **not** swallow failures: an
-HTTP error propagates, and an unexpected response shape raises ``ValueError``.
-Fail early rather than hand back a stale, made-up table list.
-"""
+"""Read-only marimo SQL connection for PostHog HogQL."""
 
 from typing import Any
 
@@ -18,11 +8,7 @@ from ._core import Connection
 
 
 class PostHogConnection(Connection):
-    """DB-API 2.0 connection over the PostHog HogQL API.
-
-    ``dialect`` tells marimo to parse queries as ClickHouse, which HogQL is
-    closely modelled on, and makes marimo detect the connection as a SQL engine.
-    """
+    """Connect to a PostHog project with a personal API key."""
 
     dialect = "clickhouse"
 
@@ -47,19 +33,25 @@ class PostHogConnection(Connection):
             timeout=120,
         )
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError("unexpected PostHog response: expected an object")
+        return data
 
     def _run_hogql(self, query: str) -> dict:
         return self._run_query({"kind": "HogQLQuery", "query": query})
 
     def _fetch(self, query: str) -> tuple[list[Any], list[Any], Any]:
-        """Return ``(columns, rows, types)`` for the shared cursor.
-
-        `types` is HogQL's list of ``[name, clickhouse_type]`` pairs when present
-        (or None); the cursor turns it into DB-API type codes.
-        """
+        """Return columns, rows, and types for the shared cursor."""
         data = self._run_hogql(query)
-        return data.get("columns") or [], data.get("results", []), data.get("types")
+        columns = data.get("columns")
+        rows = data.get("results")
+        types = data.get("types")
+        if not isinstance(columns, list) or not isinstance(rows, list):
+            raise ValueError("unexpected PostHog query response shape")
+        if types is not None and not isinstance(types, list):
+            raise ValueError("unexpected PostHog query types")
+        return columns, rows, types
 
     def schema_rows(self) -> list[dict[str, Any]]:
         """Return HogQL table/column/type rows (via ``DatabaseSchemaQuery``)."""
@@ -67,10 +59,7 @@ class PostHogConnection(Connection):
 
 
 def _rows_from_schema_response(data: dict) -> list[dict[str, Any]]:
-    """Flatten a DatabaseSchemaQuery reply into table/column/type rows.
-
-    Raises ``ValueError`` on any shape we don't recognise.
-    """
+    """Convert a schema response to table, column, and type rows."""
     tables = data.get("tables")
     if not isinstance(tables, dict) or not tables:
         raise ValueError("DatabaseSchemaQuery response has no 'tables' mapping")
@@ -103,10 +92,6 @@ def _rows_from_schema_response(data: dict) -> list[dict[str, Any]]:
 
 
 def schema_rows(conn: Any) -> list[dict[str, Any]]:
-    """Return table/column/type rows for the connection.
-
-    Propagates HTTP errors and raises ``ValueError`` on an unexpected response
-    shape — no fallback, no silent degradation.
-    """
+    """Return the table, column, and type rows for a connection."""
     data = conn._run_query({"kind": "DatabaseSchemaQuery"})
     return _rows_from_schema_response(data)

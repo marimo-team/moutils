@@ -1,23 +1,10 @@
-"""DB-API 2.0 connection over a Datasette instance's JSON query API.
-
-Built on :mod:`moutils.db._core`: paging/``description`` live in the shared
-``Cursor``, so this module only owns the ``httpx`` transport, the result mapping
-(``_fetch``), and schema discovery.
-
-Datasette serves SQLite over an HTTP JSON API. Arbitrary SQL goes to
-``GET {base_url}/{database}.json?sql=...&_shape=arrays``, which returns a
-``{"columns": [...], "rows": [[...]], "truncated": bool, "ok": bool}`` envelope;
-SQL errors come back as HTTP 4xx with ``{"ok": false, "error": "..."}``.
-
-``httpx`` is an optional dependency (install with ``pip install moutils[db]``); it
-is imported lazily so importing this module never requires it — only constructing
-a :class:`DatasetteConnection` (or calling :func:`databases`) does.
-"""
+"""Read-only marimo SQL connection for Datasette."""
 
 from __future__ import annotations
 
 import warnings
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 if TYPE_CHECKING:
     import httpx
@@ -46,32 +33,10 @@ def _require_httpx() -> Any:
 
 
 class DatasetteConnection(Connection):
-    """DB-API 2.0 connection over **one** database of a Datasette instance.
+    """Connect to one database in a Datasette instance.
 
-    A connection is scoped to a single database because that's how Datasette
-    scopes SQL: queries go to ``{base_url}/{database}.json?sql=...``, and one
-    database can't reach another's tables. ``dialect="sqlite"`` makes marimo
-    parse cells as SQLite and detect the connection as a SQL engine.
-
-    Discovering the other databases on the same instance
-    ----------------------------------------------------
-    A Datasette instance usually serves several databases. From a single
-    connection you can list its siblings and open one of them::
-
-        conn = DatasetteConnection("https://example.com", "earthquakes")
-        conn.databases()                       # -> ['earthquakes', 'everest', ...]
-        everest = conn.for_database("everest") # a new connection to another db
-
-    ``databases()`` uses Datasette's ``/-/databases.json`` introspection endpoint
-    (carrying this connection's token). To browse the tables/columns *within*
-    this database, use :meth:`schema_rows`.
-
-    Notes
-    -----
-    * Datasette caps arbitrary-SQL results at ``max_returned_rows`` (default
-      1000); when a result is truncated the connection emits a ``UserWarning``.
-      Add a ``LIMIT`` (or raise Datasette's ``max_returned_rows``) to control it.
-    * Pass ``token=`` for an instance behind bearer-token auth.
+    Set ``token`` for bearer-token authentication. Datasette can limit query
+    results. This connection warns when the server truncates a result.
     """
 
     dialect = "sqlite"
@@ -94,21 +59,27 @@ class DatasetteConnection(Connection):
 
     def _run_sql(self, sql: str) -> dict:
         headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
+        database = quote(self._database, safe="")
+        # Datasette 0.x uses this URL. Datasette 1.x redirects it to
+        # /<database>/-/query.json, so follow that redirect for compatibility.
         resp = self._client.get(
-            f"{self._base_url}/{self._database}.json",
-            params={"sql": sql, "_shape": "arrays"},
+            f"{self._base_url}/{database}.json",
+            params={"sql": sql, "_shape": "arrays", "_extra": "columns"},
             headers=headers,
+            follow_redirects=True,
         )
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError("unexpected Datasette response: expected an object")
+        if data.get("ok") is False:
+            raise ValueError(
+                f"Datasette query failed: {data.get('error', 'unknown error')}"
+            )
+        return data
 
     def _fetch(self, query: str) -> tuple[list[Any], list[Any], Any]:
-        """Return ``(columns, rows, types)`` for the shared cursor.
-
-        SQLite query results carry no per-column types (dynamic typing), so
-        ``types`` is None — DB-API type codes come out as None; column types are
-        available via :meth:`schema_rows` instead.
-        """
+        """Return columns and rows for the shared cursor."""
         data = self._run_sql(query)
         if data.get("truncated"):
             warnings.warn(
@@ -117,14 +88,14 @@ class DatasetteConnection(Connection):
                 "max_returned_rows) to fetch the rest.",
                 stacklevel=3,
             )
-        return data.get("columns") or [], data.get("rows", []), None
+        columns = data.get("columns")
+        rows = data.get("rows")
+        if not isinstance(columns, list) or not isinstance(rows, list):
+            raise ValueError("unexpected Datasette query response shape")
+        return columns, rows, None
 
     def schema_rows(self) -> list[dict[str, Any]]:
-        """Return ``{"table", "column", "type"}`` rows for every user table.
-
-        Raises ``ValueError`` if the response isn't the expected 3-column shape —
-        fail early rather than hand back a malformed schema.
-        """
+        """Return the columns and types for each user table."""
         data = self._run_sql(_SCHEMA_SQL)
         columns = data.get("columns")
         rows = data.get("rows")
@@ -140,21 +111,11 @@ class DatasetteConnection(Connection):
         ]
 
     def databases(self) -> list[str]:
-        """List the databases served by this connection's Datasette instance.
-
-        Discovery from a single connection: hits ``/-/databases.json`` with this
-        connection's base URL, token, and pooled client, skipping the in-memory
-        cross-database database. Pair with :meth:`for_database` to open one.
-        See also the module-level :func:`databases`.
-        """
+        """Return the databases on this Datasette instance."""
         return databases(self._base_url, self._token, client=self._client)
 
     def for_database(self, database: str) -> "DatasetteConnection":
-        """Open a new connection to another database on the same instance.
-
-        Reuses this connection's base URL and token. Datasette scopes SQL per
-        database, so a sibling database is a separate connection.
-        """
+        """Connect to another database on the same instance."""
         return DatasetteConnection(self._base_url, database, token=self._token)
 
     def close(self) -> None:
@@ -168,21 +129,23 @@ def databases(
     *,
     client: httpx.Client | None = None,
 ) -> list[str]:
-    """Return the database names a Datasette instance serves.
-
-    Uses Datasette's documented ``/-/databases.json`` introspection endpoint
-    (gated by the same permission as querying, so ``token`` flows through). The
-    in-memory cross-database database (``_memory``) is skipped — it isn't a real
-    dataset. Returns each database's ``route`` (the URL-safe name used in the
-    query endpoint).
-    """
+    """Return the database routes on a Datasette instance."""
     owns = client is None
     client = client or _require_httpx().Client(timeout=120)
     try:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         resp = client.get(f"{base_url.rstrip('/')}/-/databases.json", headers=headers)
         resp.raise_for_status()
-        return [d["route"] for d in resp.json() if not d.get("is_memory")]
+        data = resp.json()
+        entries = data.get("databases") if isinstance(data, dict) else data
+        if not isinstance(entries, list) or not all(
+            isinstance(entry, dict) for entry in entries
+        ):
+            raise ValueError("unexpected Datasette databases response shape")
+        routes = [entry.get("route") for entry in entries if not entry.get("is_memory")]
+        if not all(isinstance(route, str) for route in routes):
+            raise ValueError("unexpected Datasette database route")
+        return routes
     finally:
         if owns:
             client.close()

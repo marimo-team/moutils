@@ -1,15 +1,9 @@
-"""Token auth against a REAL, in-process Datasette locked with datasette-auth-tokens.
-
-Confirms end-to-end that the connector's `token` (sent as `Authorization: Bearer
-<token>`) is what actually unlocks a protected instance — no mocked responses.
-"""
+"""End-to-end tests for Datasette token authentication."""
 
 import httpx
 import pytest
 
 from moutils.db.datasette import DatasetteConnection
-
-from .conftest import LIVE_TOKEN
 
 _HOST = "http://datasette.test"
 _DB = "sample"
@@ -31,8 +25,8 @@ def test_wrong_token_is_denied(route_authed):
     conn.close()
 
 
-def test_correct_token_grants_access(route_authed):
-    conn = DatasetteConnection(_HOST, _DB, token=LIVE_TOKEN)
+def test_correct_token_grants_access(route_authed, live_token):
+    conn = DatasetteConnection(_HOST, _DB, token=live_token)
     assert conn.cursor().execute("select name from dogs order by id").fetchall() == [
         ["Cleo"],
         ["Pancakes"],

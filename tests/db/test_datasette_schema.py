@@ -1,4 +1,4 @@
-"""Schema discovery — pragma-based parsing; fails early on unexpected shape."""
+"""Tests for Datasette schema discovery."""
 
 import pytest
 

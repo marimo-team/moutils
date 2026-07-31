@@ -1,4 +1,4 @@
-"""HTTP contract — verified with `responses` (real request-building, no network)."""
+"""Tests for the PostHog HTTP contract."""
 
 import json
 
@@ -67,6 +67,16 @@ def test_http_error_propagates(status):
     )
     with pytest.raises(requests.HTTPError):
         PostHogConnection(api_key="bad", project_id=42).cursor().execute("SELECT 1")
+
+
+@responses.activate
+def test_bad_query_shape_raises():
+    responses.post(
+        "https://us.posthog.com/api/projects/42/query/",
+        json={"columns": ["n"]},
+    )
+    with pytest.raises(ValueError, match="query response shape"):
+        PostHogConnection(api_key="k", project_id=42).cursor().execute("SELECT 1")
 
 
 def test_commit_rollback_close_are_noops():
