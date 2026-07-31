@@ -26,6 +26,13 @@ def test_record_mappings_preserve_first_record_order():
     assert list(result.rows) == [[2, 1], [4, 3]]
 
 
+def test_record_mappings_include_fields_from_later_records():
+    result = normalize_result([{"a": 1}, {"b": 2, "a": 3}, {"c": 4}])
+
+    assert list(result.columns) == ["a", "b", "c"]
+    assert list(result.rows) == [[1, None, None], [3, 2, None], [None, None, 4]]
+
+
 def test_mapping_result():
     result = normalize_result({"columns": ["x"], "rows": [[1]], "types": ["int"]})
     assert result == QueryResult(["x"], [[1]], ["int"])

@@ -32,6 +32,29 @@ def test_connectorx_infers_dialect_and_forwards_options(monkeypatch):
     ]
 
 
+def test_connectorx_arrow_stream_reads_table(monkeypatch):
+    table = SimpleNamespace(
+        column_names=["x"],
+        schema=SimpleNamespace(types=["int64"]),
+        to_pylist=lambda: [{"x": 1}],
+    )
+    reader = SimpleNamespace(read_all=lambda: table)
+    monkeypatch.setitem(
+        sys.modules,
+        "connectorx",
+        SimpleNamespace(read_sql=lambda *args, **kwargs: reader),
+    )
+    monkeypatch.setitem(sys.modules, "pyarrow", SimpleNamespace())
+
+    connection = ConnectorXConnection(
+        "sqlite:///tmp/data.db", return_type="arrow_stream"
+    )
+
+    cursor = connection.cursor().execute("select 1")
+    assert cursor.fetchall() == [[1]]
+    assert cursor.description[0][1] == "int64"
+
+
 def test_connectorx_federated_requires_dialect(monkeypatch):
     monkeypatch.setitem(
         sys.modules, "connectorx", SimpleNamespace(read_sql=lambda: None)

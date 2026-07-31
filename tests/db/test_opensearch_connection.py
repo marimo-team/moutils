@@ -50,3 +50,28 @@ def test_opensearch_paginates_jdbc_results():
         ),
         ("POST", "/_plugins/_sql", {"cursor": "next"}),
     ]
+
+
+def test_opensearch_closes_cursor_after_error():
+    transport = FakeTransport(
+        [
+            {
+                "schema": [{"name": "name", "type": "keyword"}],
+                "datarows": [],
+                "cursor": "next",
+            },
+            {"datarows": "bad"},
+            {},
+        ]
+    )
+
+    with pytest.raises(ValueError, match="rows"):
+        OpenSearchConnection(SimpleNamespace(transport=transport)).cursor().execute(
+            "select 1"
+        )
+
+    assert transport.calls[-1] == (
+        "POST",
+        "/_plugins/_sql/close",
+        {"cursor": "next"},
+    )

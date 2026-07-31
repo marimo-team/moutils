@@ -21,7 +21,13 @@ class QueryResult:
 def _records_result(records: list[Mapping[Any, Any]]) -> QueryResult:
     if not records:
         return QueryResult([], [])
-    columns = list(records[0])
+    columns: list[Any] = []
+    seen: set[Any] = set()
+    for record in records:
+        for column in record:
+            if column not in seen:
+                seen.add(column)
+                columns.append(column)
     return QueryResult(
         columns, ([record.get(column) for column in columns] for record in records)
     )
