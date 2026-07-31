@@ -62,11 +62,20 @@ class ConnectorXConnection(QueryConnection):
             )
 
         def query(sql: str) -> Any:
-            return connectorx.read_sql(
+            result = connectorx.read_sql(
                 connection,
                 sql,
                 return_type=return_type,
                 **read_sql_options,
             )
+            if return_type == "arrow_stream":
+                read_all = getattr(result, "read_all", None)
+                if not callable(read_all):
+                    raise TypeError(
+                        "ConnectorX return_type='arrow_stream' did not return "
+                        "a PyArrow RecordBatchReader"
+                    )
+                return read_all()
+            return result
 
         super().__init__(query, dialect=resolved_dialect, schema=schema)
