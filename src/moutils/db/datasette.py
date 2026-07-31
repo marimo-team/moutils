@@ -115,8 +115,13 @@ class DatasetteConnection(Connection):
         return databases(self._base_url, self._token, client=self._client)
 
     def for_database(self, database: str) -> "DatasetteConnection":
-        """Connect to another database on the same instance."""
-        return DatasetteConnection(self._base_url, database, token=self._token)
+        """Connect to another database with the same HTTP client."""
+        return DatasetteConnection(
+            self._base_url,
+            database,
+            token=self._token,
+            client=self._client,
+        )
 
     def close(self) -> None:
         if self._owns_client:

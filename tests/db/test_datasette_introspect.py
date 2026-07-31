@@ -1,5 +1,6 @@
 """Tests for Datasette database discovery."""
 
+import httpx
 import pytest
 
 from moutils.db.datasette import DatasetteConnection, databases
@@ -49,5 +50,27 @@ def test_for_database_opens_sibling_with_same_url_and_token():
     assert other.database_name == "everest"
     assert other._base_url == "http://ds.test"
     assert other._token == "t"
-    conn.close()
+    assert other._client is conn._client
+    assert not other._owns_client
+
     other.close()
+    assert not conn._client.is_closed
+    conn.close()
+    assert conn._client.is_closed
+
+
+def test_for_database_preserves_caller_provided_client():
+    client = httpx.Client(headers={"X-Test": "configured"}, timeout=7)
+    conn = DatasetteConnection(
+        "http://ds.test", "earthquakes", token="t", client=client
+    )
+    other = conn.for_database("everest")
+
+    assert other._client is client
+    assert other._client.headers["X-Test"] == "configured"
+    assert other._client.timeout.connect == 7
+
+    other.close()
+    conn.close()
+    assert not client.is_closed
+    client.close()
