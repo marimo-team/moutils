@@ -500,10 +500,11 @@ row = np.zeros((1, 4), dtype=np.float32)
 logits = (await runtime.run({"x": row}, ["logits"]))[0]
 ```
 
-Export the notebook with `marimo export html-wasm notebook.py -o dist
---execute`. The `--execute` flag runs the notebook once, and `cache_cells`
-bundles the cell cache into `dist`. Serving `dist` restores `runtime` from its
-ONNX bytes and runs inference against `onnxruntime-web` in the browser.
+Export the notebook with
+`marimo export html-wasm notebook.py -o dist --execute`. The `--execute` flag
+runs the notebook once, and `cache_cells` bundles the cell cache into `dist`.
+Serving `dist` restores `runtime` from its ONNX bytes and runs inference against
+`onnxruntime-web` in the browser.
 
 Mark the training packages as native-only, as the header above does.
 For inference outside the browser, install the `wasm` extra:

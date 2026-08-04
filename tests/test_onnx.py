@@ -94,6 +94,21 @@ def test_from_torch_builds_runnable_model():
     assert y.shape == (1, 2)
 
 
+def test_wasm_version_pins_and_round_trips():
+    from moutils.onnx import DEFAULT_WASM_VERSION, OnnxRuntimeStub
+
+    assert OnnxRuntime(b"m").wasm_version == DEFAULT_WASM_VERSION
+    rt = OnnxRuntime(b"m", wasm_version="1.20.1")
+    assert rt.wasm_version == "1.20.1"
+    # The pin survives a pickle round-trip and the marimo cache stub.
+    import pickle
+
+    assert pickle.loads(pickle.dumps(rt)).wasm_version == "1.20.1"
+    restored = OnnxRuntimeStub(rt).load({})
+    assert restored.wasm_version == "1.20.1"
+    assert restored.onnx_bytes == b"m"
+
+
 def test_from_jax_builds_runnable_model():
     pytest.importorskip("jax")
     pytest.importorskip("jax2onnx")

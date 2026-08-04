@@ -27,6 +27,12 @@ from typing import Any
 
 __all__ = ["OnnxRuntime"]
 
+# onnxruntime-web build loaded in the browser backend. Pinned for
+# reproducibility; override per instance via the `wasm_version` argument.
+# Tracks the current onnxruntime-web release (what the unpinned CDN URL served,
+# now made explicit). Native `onnxruntime` in the lock is 1.28.0.
+DEFAULT_WASM_VERSION = "1.27.0"
+
 
 class OnnxRuntime:
     """Lazy, environment-adaptive ONNX inference session.
@@ -36,14 +42,24 @@ class OnnxRuntime:
     round-trips just the model bytes.
     """
 
-    def __init__(self, onnx_bytes: bytes) -> None:
+    def __init__(
+        self, onnx_bytes: bytes, *, wasm_version: str = DEFAULT_WASM_VERSION
+    ) -> None:
         self.onnx_bytes = onnx_bytes
+        self.wasm_version = wasm_version
         self._session: Any = None
         self._ort: Any = None
         self._kind: str | None = None
 
     @classmethod
-    def from_torch(cls, model: Any, args: Any, **export_kwargs: Any) -> OnnxRuntime:
+    def from_torch(
+        cls,
+        model: Any,
+        args: Any,
+        *,
+        wasm_version: str = DEFAULT_WASM_VERSION,
+        **export_kwargs: Any,
+    ) -> OnnxRuntime:
         """Export a torch model to ONNX and wrap the bytes.
 
         `args` and `export_kwargs` pass through to `torch.onnx.export`.
@@ -54,10 +70,17 @@ class OnnxRuntime:
 
         buf = io.BytesIO()
         torch.onnx.export(model, args, buf, **export_kwargs)
-        return cls(buf.getvalue())
+        return cls(buf.getvalue(), wasm_version=wasm_version)
 
     @classmethod
-    def from_jax(cls, fn: Any, inputs: Any, **to_onnx_kwargs: Any) -> OnnxRuntime:
+    def from_jax(
+        cls,
+        fn: Any,
+        inputs: Any,
+        *,
+        wasm_version: str = DEFAULT_WASM_VERSION,
+        **to_onnx_kwargs: Any,
+    ) -> OnnxRuntime:
         """Convert a JAX function to ONNX and wrap the bytes.
 
         Uses [`jax2onnx`](https://pypi.org/project/jax2onnx/). `inputs` (a
@@ -67,13 +90,17 @@ class OnnxRuntime:
         from jax2onnx import to_onnx
 
         model = to_onnx(fn, inputs, **to_onnx_kwargs)
-        return cls(model.SerializeToString())
+        return cls(model.SerializeToString(), wasm_version=wasm_version)
 
     def __getstate__(self) -> dict[str, Any]:
-        return {"onnx_bytes": self.onnx_bytes}
+        return {
+            "onnx_bytes": self.onnx_bytes,
+            "wasm_version": self.wasm_version,
+        }
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.onnx_bytes = state["onnx_bytes"]
+        self.wasm_version = state.get("wasm_version", DEFAULT_WASM_VERSION)
         self._session = None
         self._ort = None
         self._kind = None
@@ -91,13 +118,9 @@ class OnnxRuntime:
             import js  # type: ignore[import-not-found]
             from pyodide.ffi import to_js  # type: ignore[import-not-found]
 
-            ort = await js.eval(
-                "import('https://cdn.jsdelivr.net/npm/onnxruntime-web"
-                "/dist/ort.all.bundle.min.mjs')"
-            )
-            ort.env.wasm.wasmPaths = (
-                "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/"
-            )
+            base = f"https://cdn.jsdelivr.net/npm/onnxruntime-web@{self.wasm_version}"
+            ort = await js.eval(f"import('{base}/dist/ort.all.bundle.min.mjs')")
+            ort.env.wasm.wasmPaths = f"{base}/dist/"
             opts = js.Object.new()
             opts.executionProviders = to_js(["wasm"])
             self._ort = ort
@@ -139,19 +162,19 @@ class OnnxRuntime:
 
         feeds = {}
         for name, arr in inputs.items():
-            arr = np.ascontiguousarray(arr, dtype=np.float32)
+            # Preserve the caller's dtype — int64 token ids, bool masks, etc.
+            arr = np.ascontiguousarray(arr)
             feeds[name] = self._ort.Tensor.new(
-                "float32", to_js(arr.ravel()), to_js(list(arr.shape))
+                str(arr.dtype), to_js(arr.ravel()), to_js(list(arr.shape))
             )
         results = await self._session.run(to_js(feeds))
         names = output_names or list(results.object_keys())
         out = []
         for name in names:
             tensor = getattr(results, name)
+            # to_py() yields the tensor's native dtype; do not coerce it.
             out.append(
-                np.asarray(tensor.data.to_py(), dtype=np.float32).reshape(
-                    list(tensor.dims.to_py())
-                )
+                np.asarray(tensor.data.to_py()).reshape(list(tensor.dims.to_py()))
             )
         return out
 
@@ -161,21 +184,22 @@ class OnnxRuntime:
 # without marimo — the stub is only used inside a marimo cache.
 try:
     from marimo._save.stubs import CustomStub, register_stub
-except Exception:  # pragma: no cover - marimo not installed
+except ImportError:  # pragma: no cover - marimo not installed
     pass
 else:
 
     class OnnxRuntimeStub(CustomStub):
-        """Serialize an `OnnxRuntime` as exactly its model bytes."""
+        """Store an `OnnxRuntime`'s model bytes and pinned wasm version."""
 
-        __slots__ = ("onnx_bytes",)
+        __slots__ = ("onnx_bytes", "wasm_version")
 
         def __init__(self, runtime: Any) -> None:
             self.onnx_bytes = runtime.onnx_bytes
+            self.wasm_version = runtime.wasm_version
 
         def load(self, glbls: dict[str, Any]) -> Any:
             del glbls
-            return OnnxRuntime(self.onnx_bytes)
+            return OnnxRuntime(self.onnx_bytes, wasm_version=self.wasm_version)
 
         @staticmethod
         def get_type() -> type:
