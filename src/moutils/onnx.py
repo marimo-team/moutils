@@ -167,8 +167,15 @@ class OnnxRuntime:
             feeds[name] = self._ort.Tensor.new(
                 str(arr.dtype), to_js(arr.ravel()), to_js(list(arr.shape))
             )
-        results = await self._session.run(to_js(feeds))
-        names = output_names or list(results.object_keys())
+        # Pass the requested names as `fetches` so the runtime computes only
+        # those outputs, matching the native path. Default to the session's
+        # declared outputs when none are requested.
+        names = (
+            list(output_names)
+            if output_names
+            else list(self._session.outputNames)
+        )
+        results = await self._session.run(to_js(feeds), to_js(names))
         out = []
         for name in names:
             tensor = getattr(results, name)
