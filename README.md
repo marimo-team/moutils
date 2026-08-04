@@ -448,15 +448,15 @@ an existing client leave that client open by default.
 
 ## ONNX runtime adapter
 
-`moutils.onnx.OnnxRuntime` exposes a inference runtime for pytorch and jax
+`moutils.onnx.OnnxRuntime` exposes an inference runtime for PyTorch and JAX
 models in WASM marimo notebooks through a
 [cacheable](https://docs.marimo.io/api/caching/) interface and the
-[ONNX runtime](https://onnxruntime.ai/). As jax and torch are not available in
-the browser, the adapter
-exports the model to ONNX and runs inference with `onnxruntime-web` when used in
-browser. See [`notebooks/onnx_mnist1d.py`](notebooks/onnx_mnist1d.py) for a
-full example- which trains a MNIST-1D model, then bundles a static page, and
-provides interactive inference.
+[ONNX runtime](https://onnxruntime.ai/). Since PyTorch and JAX aren't available
+in the browser, the adapter exports the model to ONNX and runs inference with
+`onnxruntime-web` when used in the browser. See
+[`notebooks/onnx_mnist1d.py`](notebooks/onnx_mnist1d.py) for a full example,
+which trains an MNIST-1D model, bundles a static page, and provides interactive
+inference.
 
 To use this export ability, enable cell caching in the notebook header (or
 `pyproject.toml`). Then build the runtime in a cell:
