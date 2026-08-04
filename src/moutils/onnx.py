@@ -170,11 +170,7 @@ class OnnxRuntime:
         # Pass the requested names as `fetches` so the runtime computes only
         # those outputs, matching the native path. Default to the session's
         # declared outputs when none are requested.
-        names = (
-            list(output_names)
-            if output_names
-            else list(self._session.outputNames)
-        )
+        names = list(output_names) if output_names else list(self._session.outputNames)
         results = await self._session.run(to_js(feeds), to_js(names))
         out = []
         for name in names:
