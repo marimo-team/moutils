@@ -7,14 +7,16 @@ a CDN) when the notebook runs in the browser via WASM/pyodide.
 Importing this module registers a marimo cache stub, so a cached `OnnxRuntime`
 round-trips as exactly its model bytes. A torch or jax model trained at export
 time then restores as a working inference session inside a static WASM export.
-The training framework never loads in the browser. See the README section "ONNX
-runtime caching" for the notebook and export recipe.
 
 Example:
     ```python
     from moutils.onnx import OnnxRuntime
 
-    runtime = OnnxRuntime(onnx_bytes)          # a serialized ONNX model
+    # From a torch model (torch.onnx.export kwargs pass through):
+    runtime = OnnxRuntime.from_torch(model, (example_input,), output_names=["y"])
+    # Or wrap serialized ONNX bytes directly:
+    runtime = OnnxRuntime(onnx_bytes)
+
     logits = (await runtime.run({"x": x}))[0]  # x: a numpy input array
     ```
 """
@@ -39,6 +41,33 @@ class OnnxRuntime:
         self._session: Any = None
         self._ort: Any = None
         self._kind: str | None = None
+
+    @classmethod
+    def from_torch(cls, model: Any, args: Any, **export_kwargs: Any) -> OnnxRuntime:
+        """Export a torch model to ONNX and wrap the bytes.
+
+        `args` and `export_kwargs` pass through to `torch.onnx.export`.
+        """
+        import io
+
+        import torch
+
+        buf = io.BytesIO()
+        torch.onnx.export(model, args, buf, **export_kwargs)
+        return cls(buf.getvalue())
+
+    @classmethod
+    def from_jax(cls, fn: Any, inputs: Any, **to_onnx_kwargs: Any) -> OnnxRuntime:
+        """Convert a JAX function to ONNX and wrap the bytes.
+
+        Uses [`jax2onnx`](https://pypi.org/project/jax2onnx/). `inputs` (a
+        sequence of shapes) and `to_onnx_kwargs` pass through to
+        `jax2onnx.to_onnx`.
+        """
+        from jax2onnx import to_onnx
+
+        model = to_onnx(fn, inputs, **to_onnx_kwargs)
+        return cls(model.SerializeToString())
 
     def __getstate__(self) -> dict[str, Any]:
         return {"onnx_bytes": self.onnx_bytes}

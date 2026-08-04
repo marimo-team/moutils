@@ -76,6 +76,41 @@ def test_native_run_defaults_to_all_outputs():
     np.testing.assert_array_equal(outputs[0], 2 * x)
 
 
+def test_from_torch_builds_runnable_model():
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("onnxruntime")
+    model = torch.nn.Linear(3, 2)
+    rt = OnnxRuntime.from_torch(
+        model,
+        (torch.zeros(1, 3),),
+        input_names=["x"],
+        output_names=["y"],
+        dynamo=False,
+    )
+    assert isinstance(rt.onnx_bytes, bytes)
+    assert rt.onnx_bytes
+    x = np.zeros((1, 3), dtype=np.float32)
+    (y,) = asyncio.run(rt.run({"x": x}, ["y"]))
+    assert y.shape == (1, 2)
+
+
+def test_from_jax_builds_runnable_model():
+    pytest.importorskip("jax")
+    pytest.importorskip("jax2onnx")
+    pytest.importorskip("onnxruntime")
+    import jax.numpy as jnp
+
+    def fn(x):
+        return jnp.tanh(x) * 2.0
+
+    rt = OnnxRuntime.from_jax(fn, [("B", 3)], input_names=["x"])
+    assert isinstance(rt.onnx_bytes, bytes)
+    assert rt.onnx_bytes
+    x = np.ones((1, 3), dtype=np.float32)
+    (y,) = asyncio.run(rt.run({"x": x}))
+    np.testing.assert_allclose(y, np.tanh(1.0) * 2.0, rtol=1e-4)
+
+
 def test_marimo_cache_conversion():
     # Exercise marimo's real save/restore path: maybe_get_custom_stub routes an
     # OnnxRuntime to its stub, which restores just the model bytes, no session.

@@ -77,8 +77,6 @@ def train():
         # function and never become cached cell defs. Only the torch-free
         # results returned below are cached, and cell caching bundles them
         # into the export.
-        import io
-
         import pymde
         import torch
         from mnist1d.data import get_dataset_args, make_dataset
@@ -111,17 +109,14 @@ def train():
         test_pred = test_logits.argmax(1).numpy()
         acc = float((test_pred == y_test).mean())
 
-        buf = io.BytesIO()
-        torch.onnx.export(
+        runtime = OnnxRuntime.from_torch(
             model,
             (torch.zeros(1, 40),),
-            buf,
             input_names=["x"],
             output_names=["logits"],
             dynamic_axes={"x": {0: "n"}, "logits": {0: "n"}},
             dynamo=False,
         )
-        runtime = OnnxRuntime(buf.getvalue())
 
         mde = pymde.preserve_neighbors(
             torch.tensor(x_test_np),

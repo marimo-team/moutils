@@ -446,7 +446,7 @@ These connections do not support bound parameters. Use static or trusted SQL.
 Do not insert untrusted values into SQL strings. Provider adapters that receive
 an existing client leave that client open by default.
 
-## ONNX runtime caching
+## ONNX runtime adapter
 
 `moutils.onnx.OnnxRuntime` wraps a serialized ONNX model in a lazy inference
 session and registers a marimo cache stub for it. When marimo caches an
@@ -475,7 +475,7 @@ build the runtime in a cell:
 # cache_cells = true
 # ///
 
-import io
+import numpy as np
 from moutils.onnx import OnnxRuntime
 
 
@@ -485,33 +485,30 @@ def _make_runtime():
     import torch
 
     model = torch.nn.Linear(4, 2)
-    buf = io.BytesIO()
-    torch.onnx.export(model, (torch.zeros(1, 4),), buf,
-                      input_names=["x"], output_names=["logits"], dynamo=False)
-    return OnnxRuntime(buf.getvalue())
+    # Also supports OnnxRuntime.from_jax !
+    return OnnxRuntime.from_torch(
+        model, (torch.zeros(1, 4),),
+        input_names=["x"], output_names=["logits"], dynamo=False,
+    )
 
 
 runtime = _make_runtime()  # cached as its ONNX bytes, via the stub
+
+# Run inference! Inputs go in by name, and the requested outputs come back in
+# order.
+row = np.zeros((1, 4), dtype=np.float32)
+logits = (await runtime.run({"x": row}, ["logits"]))[0]
 ```
 
 Export the notebook with `marimo export html-wasm notebook.py -o dist
 --execute`. The `--execute` flag runs the notebook once, and `cache_cells`
 bundles the cell cache into `dist`. Serving `dist` restores `runtime` from its
-ONNX bytes and runs inference against `onnxruntime-web` in the browser. The page
-never imports torch, and Pyodide never installs it.
+ONNX bytes and runs inference against `onnxruntime-web` in the browser.
 
-Mark the training packages as native-only, as the header above does. The browser
-runs `onnxruntime-web` from a CDN, so Pyodide never installs the Python
-`onnxruntime` package. That package has no pure-Python wheel and fails to install
-under Pyodide.
-
-Keep torch out of the cell's top-level names. A bare `import torch`, or a
-torch-typed variable such as a model or a tensor, becomes a cached cell def.
-Restoring that def then needs torch. The helper above keeps them function-local.
-
+Mark the training packages as native-only, as the header above does.
 For inference outside the browser, install the `wasm` extra:
 `pip install "moutils[wasm]"`. It adds `onnxruntime`. In the browser,
-`onnxruntime-web` loads from a CDN, so no extra is needed.
+`onnxruntime-web` loads from a CDN, so no extra packages are needed.
 
 See [`notebooks/onnx_mnist1d.py`](notebooks/onnx_mnist1d.py) for a full example:
 an MLP trained on MNIST-1D, exported to a static page where inference runs live
