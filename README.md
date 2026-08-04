@@ -446,6 +446,74 @@ These connections do not support bound parameters. Use static or trusted SQL.
 Do not insert untrusted values into SQL strings. Provider adapters that receive
 an existing client leave that client open by default.
 
+## ONNX runtime adapter
+
+`moutils.onnx.OnnxRuntime` exposes an inference runtime for PyTorch and JAX
+models in WASM marimo notebooks through a
+[cacheable](https://docs.marimo.io/api/caching/) interface and the
+[ONNX runtime](https://onnxruntime.ai/). Since PyTorch and JAX aren't available
+in the browser, the adapter exports the model to ONNX and runs inference with
+`onnxruntime-web` when used in the browser. See
+[`notebooks/onnx_mnist1d.py`](notebooks/onnx_mnist1d.py) for a full example,
+which trains an MNIST-1D model, bundles a static page, and provides interactive
+inference.
+
+To use this export ability, enable cell caching in the notebook header (or
+`pyproject.toml`). Then build the runtime in a cell:
+
+```python
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#     "marimo",
+#     "numpy",
+#     "moutils",
+#     # Training-only: the browser uses onnxruntime-web, so exclude these under
+#     # Pyodide (emscripten). onnxruntime has no pure-Python wheel either.
+#     "torch; sys_platform != 'emscripten'",
+#     "onnx; sys_platform != 'emscripten'",
+#     "onnxruntime; sys_platform != 'emscripten'",
+# ]
+#
+# [tool.marimo.runtime]
+# cache_cells = true
+# ///
+
+import numpy as np
+from moutils.onnx import OnnxRuntime
+
+
+def _make_runtime():
+    # torch normally doesn't load in the browser; the cached cell's lazy
+    # evaluation means this browser execution never attempts to load the module.
+    import torch
+
+    model = torch.nn.Linear(4, 2)
+    # Also supports OnnxRuntime.from_jax !
+    return OnnxRuntime.from_torch(
+        model, (torch.zeros(1, 4),),
+        input_names=["x"], output_names=["logits"], dynamo=False,
+    )
+
+
+runtime = _make_runtime()  # cached as its ONNX bytes
+
+# Run inference! Inputs go in by name, and the requested outputs come back in
+# order.
+row = np.zeros((1, 4), dtype=np.float32)
+logits = (await runtime.run({"x": row}, ["logits"]))[0]
+```
+
+Export the notebook with `marimo export html-wasm notebook.py -o dist
+--execute`. The `--execute` flag runs the notebook once, and `cache_cells`
+bundles the cell cache into `dist`. Serving `dist` restores `runtime` from its
+ONNX bytes and runs inference against `onnxruntime-web` in the browser.
+
+Mark the training packages as native-only, as the header above does.
+For inference outside the browser, install the `wasm` extra:
+`pip install "moutils[wasm]"`. It adds `onnxruntime`. In the browser,
+`onnxruntime-web` loads from a CDN, so no extra packages are needed.
+
 ## Development
 
 We use [uv](https://github.com/astral-sh/uv) for development.
