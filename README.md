@@ -484,8 +484,8 @@ from moutils.onnx import OnnxRuntime
 
 
 def _make_runtime():
-    # torch normally load in browser. cached cell's lazy evaluation
-    # means this browser execution won't ever attempt to load the module.
+    # torch normally doesn't load in the browser; the cached cell's lazy
+    # evaluation means this browser execution never attempts to load the module.
     import torch
 
     model = torch.nn.Linear(4, 2)
