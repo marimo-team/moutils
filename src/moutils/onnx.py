@@ -7,18 +7,6 @@ a CDN) when the notebook runs in the browser via WASM/pyodide.
 Importing this module registers a marimo cache stub, so a cached `OnnxRuntime`
 round-trips as exactly its model bytes. A torch or jax model trained at export
 time then restores as a working inference session inside a static WASM export.
-
-Example:
-    ```python
-    from moutils.onnx import OnnxRuntime
-
-    # From a torch model (torch.onnx.export kwargs pass through):
-    runtime = OnnxRuntime.from_torch(model, (example_input,), output_names=["y"])
-    # Or wrap serialized ONNX bytes directly:
-    runtime = OnnxRuntime(onnx_bytes)
-
-    logits = (await runtime.run({"x": x}))[0]  # x: a numpy input array
-    ```
 """
 
 from __future__ import annotations
@@ -46,6 +34,23 @@ class OnnxRuntime:
     Holds only the serialized model. The live session is built on the first
     `run()` call and is never serialized. Pickling or caching an instance
     round-trips just the model bytes.
+
+    Example:
+        ```python
+        from moutils.onnx import OnnxRuntime
+
+        # Build from a trained torch model. `example_input` is a sample input
+        # tensor (any values) whose shape traces the exported graph.
+        runtime = OnnxRuntime.from_torch(
+            model, (example_input,), input_names=["x"], output_names=["y"]
+        )
+        # ...or from a JAX function, or from raw ONNX bytes:
+        runtime = OnnxRuntime.from_jax(fn, [("B", 4)], input_names=["x"])
+        runtime = OnnxRuntime(onnx_bytes)
+
+        # `run` is async; `x` is a numpy array, `y` a numpy array:
+        (y,) = await runtime.run({"x": x}, ["y"])
+        ```
     """
 
     def __init__(
@@ -71,9 +76,24 @@ class OnnxRuntime:
         wasm_version: str = DEFAULT_WASM_VERSION,
         **export_kwargs: Any,
     ) -> OnnxRuntime:
-        """Export a torch model to ONNX and wrap the bytes.
+        """Export a torch model to ONNX and wrap the resulting bytes.
 
-        `args` and `export_kwargs` pass through to `torch.onnx.export`.
+        Args:
+            model: A torch module (or callable) to export.
+            args: Example inputs that trace the graph, as a tuple — for
+                example `(torch.zeros(1, 4),)`.
+            wasm_version: onnxruntime-web version for the browser backend.
+            export_kwargs: Extra keyword arguments forwarded to
+                `torch.onnx.export`, such as `input_names`, `output_names`,
+                and `dynamo`.
+
+        Example:
+            ```python
+            runtime = OnnxRuntime.from_torch(
+                model, (torch.zeros(1, 4),),
+                input_names=["x"], output_names=["logits"],
+            )
+            ```
         """
         import io
 
@@ -92,11 +112,26 @@ class OnnxRuntime:
         wasm_version: str = DEFAULT_WASM_VERSION,
         **to_onnx_kwargs: Any,
     ) -> OnnxRuntime:
-        """Convert a JAX function to ONNX and wrap the bytes.
+        """Convert a JAX function to ONNX and wrap the resulting bytes.
 
-        Uses [`jax2onnx`](https://pypi.org/project/jax2onnx/). `inputs` (a
-        sequence of shapes) and `to_onnx_kwargs` pass through to
-        `jax2onnx.to_onnx`.
+        Uses [`jax2onnx`](https://pypi.org/project/jax2onnx/).
+
+        Args:
+            fn: A JAX-traceable function.
+            inputs: One shape per argument to `fn`, for example `[("B", 4)]`
+                for a dynamic batch of width 4.
+            wasm_version: onnxruntime-web version for the browser backend.
+            to_onnx_kwargs: Extra keyword arguments forwarded to
+                `jax2onnx.to_onnx`, such as `input_names`.
+
+        Example:
+            ```python
+            import jax.numpy as jnp
+
+            runtime = OnnxRuntime.from_jax(
+                lambda x: jnp.tanh(x), [("B", 4)], input_names=["x"]
+            )
+            ```
         """
         from jax2onnx import to_onnx
 
@@ -156,12 +191,20 @@ class OnnxRuntime:
         inputs: dict[str, Any],
         output_names: list[str] | None = None,
     ) -> list[Any]:
-        """Run inference and return the outputs in `output_names` order.
+        """Run inference and return the requested outputs, in order.
 
         Args:
-            inputs: Mapping of input name to a numpy array.
-            output_names: Names of the outputs to return, in order. When `None`,
-                returns all outputs in the session's declared order.
+            inputs: Mapping of model input name to a numpy array.
+            output_names: Model output names to return, in order. When `None`,
+                returns every output in the model's declared order.
+
+        Example:
+            ```python
+            # Ask for one named output:
+            (logits,) = await runtime.run({"x": x}, ["logits"])
+            # ...or every output:
+            outputs = await runtime.run({"x": x})
+            ```
         """
         import numpy as np
 
