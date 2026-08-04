@@ -109,6 +109,13 @@ def test_wasm_version_pins_and_round_trips():
     assert restored.onnx_bytes == b"m"
 
 
+def test_wasm_version_rejects_injection():
+    OnnxRuntime(b"m", wasm_version="1.27.0")  # a valid version does not raise
+    for bad in ["1.0'); alert(1); //", "1 2", 'a"b', "x)", "v/../../etc"]:
+        with pytest.raises(ValueError):
+            OnnxRuntime(b"m", wasm_version=bad)
+
+
 def test_from_jax_builds_runnable_model():
     pytest.importorskip("jax")
     pytest.importorskip("jax2onnx")

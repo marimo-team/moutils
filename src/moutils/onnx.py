@@ -23,6 +23,7 @@ Example:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 __all__ = ["OnnxRuntime"]
@@ -32,6 +33,11 @@ __all__ = ["OnnxRuntime"]
 # Tracks the current onnxruntime-web release (what the unpinned CDN URL served,
 # now made explicit). Native `onnxruntime` in the lock is 1.28.0.
 DEFAULT_WASM_VERSION = "1.27.0"
+
+# `wasm_version` is interpolated into the browser's `js.eval` URL, so restrict
+# it to version-string characters — no quotes, whitespace, or `);` that could
+# break out of the string and inject JavaScript.
+_WASM_VERSION_RE = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._+-]*\Z")
 
 
 class OnnxRuntime:
@@ -45,6 +51,11 @@ class OnnxRuntime:
     def __init__(
         self, onnx_bytes: bytes, *, wasm_version: str = DEFAULT_WASM_VERSION
     ) -> None:
+        if not _WASM_VERSION_RE.match(wasm_version):
+            raise ValueError(
+                f"invalid wasm_version {wasm_version!r}: expected a version "
+                "string such as '1.27.0'."
+            )
         self.onnx_bytes = onnx_bytes
         self.wasm_version = wasm_version
         self._session: Any = None
