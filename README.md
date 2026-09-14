@@ -52,6 +52,7 @@ Get and set the hash portion of the URL.
 
 ```python
 from moutils import URLHash
+
 h = URLHash()
 h.hash  # e.g. "#section-1"
 ```
@@ -62,6 +63,7 @@ Get and set the current URL path.
 
 ```python
 from moutils import URLPath
+
 p = URLPath()
 p.path  # e.g. "/notebooks/demo"
 ```
@@ -72,6 +74,7 @@ Read all URL components (protocol, hostname, port, pathname, search, hash, etc.)
 
 ```python
 from moutils import URLInfo
+
 info = URLInfo()
 info.hostname  # e.g. "localhost"
 ```
@@ -82,6 +85,7 @@ Query DOM elements using CSS selectors.
 
 ```python
 from moutils import DOMQuery
+
 q = DOMQuery(selector=".my-class")
 q.result  # list of matched element data
 ```
@@ -92,6 +96,7 @@ Get, set, and monitor browser cookies.
 
 ```python
 from moutils import CookieManager
+
 cm = CookieManager()
 cm.cookies  # dict of current cookies
 ```
@@ -102,6 +107,7 @@ Read and write data in the browser's localStorage or sessionStorage.
 
 ```python
 from moutils import StorageItem
+
 s = StorageItem(key="my-key", storage_type="local")
 s.data  # stored value
 ```
@@ -112,6 +118,7 @@ Render HTML content and handle DOM events (mouse, keyboard, form, drag, touch, p
 
 ```python
 from moutils import Slot
+
 s = Slot(children="<button>Click me</button>", on_dblclick=lambda e: print(e))
 ```
 
@@ -121,6 +128,7 @@ Copy text to the clipboard with a button and success feedback.
 
 ```python
 from moutils import CopyToClipboard
+
 c = CopyToClipboard(text="hello world")
 ```
 
@@ -141,9 +149,10 @@ Detect the user's preferred color scheme (light or dark). Automatically updates 
 
 ```python
 from moutils import ColorScheme
+
 cs = ColorScheme()
-cs.scheme       # "light" or "dark"
-cs.prefers_dark # True or False
+cs.scheme  # "light" or "dark"
+cs.prefers_dark  # True or False
 ```
 
 ### ViewportSize
@@ -152,8 +161,9 @@ Detect the browser window dimensions. Updates on resize (debounced).
 
 ```python
 from moutils import ViewportSize
+
 vs = ViewportSize()
-vs.width   # e.g. 1920
+vs.width  # e.g. 1920
 vs.height  # e.g. 1080
 ```
 
@@ -163,6 +173,7 @@ Detect whether the browser has network connectivity.
 
 ```python
 from moutils import OnlineStatus
+
 os_ = OnlineStatus()
 os_.online  # True or False
 ```
@@ -173,9 +184,10 @@ Detect whether the browser tab is currently active or hidden.
 
 ```python
 from moutils import PageVisibility
+
 pv = PageVisibility()
 pv.visible  # True or False
-pv.state    # "visible" or "hidden"
+pv.state  # "visible" or "hidden"
 ```
 
 ### Geolocation
@@ -184,11 +196,12 @@ Get the user's geographic coordinates. Opt-in — set `enabled=True` to request 
 
 ```python
 from moutils import Geolocation
+
 geo = Geolocation(enabled=True)
-geo.latitude   # e.g. 37.7749
+geo.latitude  # e.g. 37.7749
 geo.longitude  # e.g. -122.4194
-geo.accuracy   # meters
-geo.error      # error message, if any
+geo.accuracy  # meters
+geo.error  # error message, if any
 ```
 
 ### CameraCapture
@@ -197,6 +210,7 @@ Capture a still image from the webcam. Opt-in — set `enabled=True` to request 
 
 ```python
 from moutils import CameraCapture
+
 cam = CameraCapture(enabled=True, width=640, height=480)
 cam.image_data  # base64 data URL of the captured image
 ```
@@ -207,9 +221,10 @@ Send browser notifications. Automatically requests permission when needed.
 
 ```python
 from moutils import Notification
+
 n = Notification(title="Done!", body="Your computation finished.")
-n.send = True   # fires the notification
-n.permission    # "default", "granted", or "denied"
+n.send = True  # fires the notification
+n.permission  # "default", "granted", or "denied"
 ```
 
 ### KeyboardShortcut
@@ -218,9 +233,10 @@ Listen for global keyboard shortcuts with modifier key support.
 
 ```python
 from moutils import KeyboardShortcut
+
 ks = KeyboardShortcut(shortcut="ctrl+k")
 ks.pressed  # True when the shortcut is pressed
-ks.event    # dict with key event details
+ks.event  # dict with key event details
 ```
 
 ### thread_map, process_map, interpreter_map
@@ -236,13 +252,15 @@ Inspired by https://tqdm.github.io/docs/contrib.concurrent/.
 ```python
 from moutils.concurrent import thread_map, process_map, interpreter_map
 
+
 def add_one(x):
     return x + 1
+
 
 results: list[int] = thread_map(add_one, range(1000))
 # Can specify title, max_workers, etc.
 results = process_map(add_one, range(1000), title="Process map", max_workers=2)
-results = interpreter_map(add_one, range(1000)) # Only available for Python >=3.14
+results = interpreter_map(add_one, range(1000))  # Only available for Python >=3.14
 ```
 
 ### PrintPageButton
@@ -251,6 +269,7 @@ Button that opens the browser print dialog when clicked.
 
 ```python
 from moutils import PrintPageButton
+
 btn = PrintPageButton()
 ```
 
@@ -260,6 +279,7 @@ Programmatically trigger the browser print dialog.
 
 ```python
 import moutils
+
 moutils.print_page()
 ```
 
@@ -269,6 +289,7 @@ Button that captures a DOM element as a PNG and downloads it.
 
 ```python
 from moutils import ScreenshotButton
+
 btn = ScreenshotButton(locator="#my-chart", filename="chart.png")
 ```
 
@@ -278,6 +299,7 @@ Programmatically screenshot a DOM element and download as PNG.
 
 ```python
 import moutils
+
 moutils.screenshot(locator="#my-chart", filename="chart.png")
 ```
 
@@ -491,8 +513,11 @@ def _make_runtime():
     model = torch.nn.Linear(4, 2)
     # Also supports OnnxRuntime.from_jax !
     return OnnxRuntime.from_torch(
-        model, (torch.zeros(1, 4),),
-        input_names=["x"], output_names=["logits"], dynamo=False,
+        model,
+        (torch.zeros(1, 4),),
+        input_names=["x"],
+        output_names=["logits"],
+        dynamo=False,
     )
 
 
