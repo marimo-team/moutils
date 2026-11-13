@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-p-small
     timeout-minutes: 10
     env:
       UV_PYTHON: 3.12
@@ -41,7 +41,7 @@ jobs:
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-p-small
     permissions:
       id-token: write
       contents: read
@@ -62,7 +62,7 @@ jobs:
   release-notes:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: publish
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-p-small
     permissions:
       contents: write
 
