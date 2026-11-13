@@ -27,7 +27,7 @@ env:
 
 jobs:
   export-notebooks:
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
 
     permissions:
       pull-requests: write
@@ -54,7 +54,7 @@ jobs:
 
   deploy:
     needs: export-notebooks
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
