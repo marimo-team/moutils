@@ -1,10 +1,9 @@
-"""Read coordinated release metadata; --sync updates version mirrors."""
+"""Read the package version without installing the project."""
 
 import json
-import tomllib
-from pathlib import Path
+import subprocess
 
-version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"][
-    "version"
-]
+version = subprocess.check_output(
+    ["uv", "version", "--package", "moutils", "--frozen", "--short"], text=True
+).strip()
 print(json.dumps({"version": version}))
