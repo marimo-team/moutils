@@ -1,0 +1,26 @@
+{
+  "repository": "marimo-team/moutils",
+  "files": [
+    "pyproject.toml",
+    "uv.lock"
+  ],
+  "command": [
+    "./scripts/release.sh"
+  ],
+  "docs": "releasing.md",
+  "checks": [
+    [
+      "uv",
+      "lock",
+      "--check"
+    ]
+  ],
+  "metadata": [
+    "python3",
+    "scripts/release-metadata.py"
+  ],
+  "prepare": [
+    "bash",
+    "scripts/prepare-release.sh"
+  ]
+}

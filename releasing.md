@@ -1,17 +1,11 @@
-# Release Process
+# Releases
 
-This document outlines the process for creating a new release of moutils.
-
-## Creating a Release
+Maintainers request a release with an authenticated GitHub CLI:
 
 ```sh
-./scripts/release.sh
+./scripts/release.sh patch
 ```
 
-## Version Numbering
-
-We follow [Semantic Versioning](https://semver.org/):
-
-- **MAJOR** version for incompatible API changes
-- **MINOR** version for backwards-compatible functionality additions
-- **PATCH** version for backwards-compatible bug fixes
+Accepts `patch`, `minor`, `major`, or a stable `X.Y.Z` version.
+Review and merge the generated PR to approve publication.
+See the [maintainer runbook](https://github.com/marimo-team/github-maintenance/blob/main/docs/releases.md) (internal).
